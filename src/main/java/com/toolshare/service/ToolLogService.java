@@ -10,6 +10,7 @@ import com.toolshare.entity.ToolLogAction;
 import com.toolshare.entity.User;
 import com.toolshare.exception.BadRequestException;
 import com.toolshare.exception.ResourceNotFoundException;
+import com.toolshare.mapper.ToolLogResponseMapper;
 import com.toolshare.repository.ToolLogRepository;
 import com.toolshare.repository.ToolRepository;
 import com.toolshare.repository.UserRepository;
@@ -34,13 +35,16 @@ public class ToolLogService {
     private final ToolLogRepository toolLogRepository;
     private final ToolRepository toolRepository;
     private final UserRepository userRepository;
+    private final ToolLogResponseMapper toolLogResponseMapper;
 
     public ToolLogService(ToolLogRepository toolLogRepository,
                           ToolRepository toolRepository,
-                          UserRepository userRepository) {
+                          UserRepository userRepository,
+                          ToolLogResponseMapper toolLogResponseMapper) {
         this.toolLogRepository = toolLogRepository;
         this.toolRepository = toolRepository;
         this.userRepository = userRepository;
+        this.toolLogResponseMapper = toolLogResponseMapper;
     }
 
     public PageResponse<ToolLogResponse> getAllToolLogs(Long toolId, Long userId, ToolLogAction action,
@@ -50,22 +54,22 @@ public class ToolLogService {
         Pageable pageable = PageRequest.of(page, size, sort);
 
         Page<ToolLog> logPage = toolLogRepository.search(toolId, userId, action, startTime, endTime, pageable);
-        Page<ToolLogResponse> responsePage = logPage.map(this::toResponse);
+        List<ToolLogResponse> content = toolLogResponseMapper.toResponseList(logPage.getContent());
 
-        return PageResponse.from(responsePage);
+        return PageResponse.from(logPage, content);
     }
 
     public ToolLogResponse getToolLogById(Long id) {
         ToolLog toolLog = toolLogRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("使用日志不存在"));
-        return toResponse(toolLog);
+        return toolLogResponseMapper.toResponse(toolLog);
     }
 
     public PageResponse<ToolLogResponse> getMyToolLogs(Long userId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<ToolLog> logPage = toolLogRepository.findByUserId(userId, pageable);
-        Page<ToolLogResponse> responsePage = logPage.map(this::toResponse);
-        return PageResponse.from(responsePage);
+        List<ToolLogResponse> content = toolLogResponseMapper.toResponseList(logPage.getContent());
+        return PageResponse.from(logPage, content);
     }
 
     @Transactional
@@ -81,7 +85,7 @@ public class ToolLogService {
         toolLog.setDescription(request.getDescription());
 
         ToolLog savedLog = toolLogRepository.save(toolLog);
-        return toResponse(savedLog);
+        return toolLogResponseMapper.toResponse(savedLog);
     }
 
     @Transactional
@@ -111,7 +115,7 @@ public class ToolLogService {
         }
 
         ToolLog savedLog = toolLogRepository.save(toolLog);
-        return toResponse(savedLog);
+        return toolLogResponseMapper.toResponse(savedLog);
     }
 
     @Transactional
@@ -183,25 +187,5 @@ public class ToolLogService {
             case REPAIR -> "维修";
             case MAINTENANCE -> "保养";
         };
-    }
-
-    private ToolLogResponse toResponse(ToolLog toolLog) {
-        ToolLogResponse response = new ToolLogResponse();
-        response.setId(toolLog.getId());
-        response.setToolId(toolLog.getToolId());
-        response.setUserId(toolLog.getUserId());
-        response.setAction(toolLog.getAction());
-        response.setDescription(toolLog.getDescription());
-        response.setCreatedAt(toolLog.getCreatedAt());
-
-        toolRepository.findById(toolLog.getToolId()).ifPresent(tool ->
-                response.setToolName(tool.getName())
-        );
-
-        userRepository.findById(toolLog.getUserId()).ifPresent(user ->
-                response.setUserName(user.getUsername())
-        );
-
-        return response;
     }
 }

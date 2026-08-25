@@ -14,6 +14,8 @@ import com.toolshare.entity.ToolLogAction;
 import com.toolshare.entity.ToolStatus;
 import com.toolshare.entity.User;
 import com.toolshare.exception.BadRequestException;
+import com.toolshare.mapper.BorrowRequestResponseMapper;
+import com.toolshare.mapper.ToolBoxResponseMapper;
 import com.toolshare.repository.BorrowRequestRepository;
 import com.toolshare.repository.OverdueRecordRepository;
 import com.toolshare.repository.ToolBoxRepository;
@@ -69,6 +71,9 @@ class BorrowRequestServiceTest {
     @Mock
     private OverdueRecordRepository overdueRecordRepository;
 
+    @Mock
+    private BorrowRequestResponseMapper borrowRequestResponseMapper;
+
     @InjectMocks
     private BorrowRequestService borrowRequestService;
 
@@ -118,6 +123,8 @@ class BorrowRequestServiceTest {
         owner.setId(ownerId);
         owner.setUsername("所有人");
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(owner));
+
+        when(borrowRequestResponseMapper.toResponse(any())).thenReturn(new BorrowRequestResponse());
     }
 
     @Test
@@ -208,7 +215,7 @@ class BorrowRequestServiceTest {
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(new User()));
 
         ToolBoxService testBoxService = new ToolBoxService(
-                toolBoxRepository, toolRepository, userRepository
+                toolBoxRepository, toolRepository, new ToolBoxResponseMapper(userRepository)
         );
         testBoxService.adminUpdateToolBoxActive(1L, true);
 
@@ -327,7 +334,7 @@ class BorrowRequestServiceTest {
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(new User()));
 
         ToolBoxService testBoxService = new ToolBoxService(
-                toolBoxRepository, toolRepository, userRepository
+                toolBoxRepository, toolRepository, new ToolBoxResponseMapper(userRepository)
         );
         testBoxService.adminUpdateToolBoxActive(1L, true);
 

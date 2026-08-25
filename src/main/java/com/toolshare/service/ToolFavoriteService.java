@@ -2,14 +2,12 @@ package com.toolshare.service;
 
 import com.toolshare.dto.PageResponse;
 import com.toolshare.dto.toolfavorite.ToolFavoriteResponse;
-import com.toolshare.entity.Tool;
 import com.toolshare.entity.ToolFavorite;
-import com.toolshare.entity.User;
 import com.toolshare.exception.BadRequestException;
 import com.toolshare.exception.ResourceNotFoundException;
+import com.toolshare.mapper.ToolFavoriteResponseMapper;
 import com.toolshare.repository.ToolFavoriteRepository;
 import com.toolshare.repository.ToolRepository;
-import com.toolshare.repository.UserRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -17,27 +15,25 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 public class ToolFavoriteService {
 
     private final ToolFavoriteRepository toolFavoriteRepository;
     private final ToolRepository toolRepository;
-    private final UserRepository userRepository;
+    private final ToolFavoriteResponseMapper toolFavoriteResponseMapper;
 
     public ToolFavoriteService(ToolFavoriteRepository toolFavoriteRepository,
                                ToolRepository toolRepository,
-                               UserRepository userRepository) {
+                               ToolFavoriteResponseMapper toolFavoriteResponseMapper) {
         this.toolFavoriteRepository = toolFavoriteRepository;
         this.toolRepository = toolRepository;
-        this.userRepository = userRepository;
+        this.toolFavoriteResponseMapper = toolFavoriteResponseMapper;
     }
 
     @Transactional
@@ -55,7 +51,7 @@ public class ToolFavoriteService {
         favorite.setToolId(toolId);
 
         ToolFavorite savedFavorite = toolFavoriteRepository.save(favorite);
-        return toResponse(savedFavorite);
+        return toolFavoriteResponseMapper.toResponse(savedFavorite);
     }
 
     @Transactional
@@ -73,7 +69,7 @@ public class ToolFavoriteService {
     public PageResponse<ToolFavoriteResponse> getMyFavorites(Long userId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<ToolFavorite> favoritePage = toolFavoriteRepository.findByUserId(userId, pageable);
-        List<ToolFavoriteResponse> responseList = toResponseList(favoritePage.getContent());
+        List<ToolFavoriteResponse> responseList = toolFavoriteResponseMapper.toResponseList(favoritePage.getContent());
         return PageResponse.of(responseList, favoritePage.getTotalElements(), favoritePage.getNumber(), favoritePage.getSize());
     }
 
@@ -92,71 +88,5 @@ public class ToolFavoriteService {
             result.put(id, favoritedSet.contains(id));
         }
         return result;
-    }
-
-    private List<ToolFavoriteResponse> toResponseList(List<ToolFavorite> favorites) {
-        if (favorites == null || favorites.isEmpty()) {
-            return new ArrayList<>();
-        }
-
-        Set<Long> toolIds = favorites.stream().map(ToolFavorite::getToolId).collect(Collectors.toSet());
-        Set<Long> ownerIds = new HashSet<>();
-
-        Map<Long, Tool> toolMap = new HashMap<>();
-        toolRepository.findAllById(toolIds).forEach(tool -> {
-            toolMap.put(tool.getId(), tool);
-            ownerIds.add(tool.getOwnerId());
-        });
-
-        Map<Long, String> ownerNameMap = new HashMap<>();
-        if (!ownerIds.isEmpty()) {
-            userRepository.findAllById(ownerIds).forEach(user -> ownerNameMap.put(user.getId(), user.getUsername()));
-        }
-
-        List<ToolFavoriteResponse> responses = new ArrayList<>();
-        for (ToolFavorite favorite : favorites) {
-            ToolFavoriteResponse response = new ToolFavoriteResponse();
-            response.setId(favorite.getId());
-            response.setUserId(favorite.getUserId());
-            response.setToolId(favorite.getToolId());
-            response.setCreatedAt(favorite.getCreatedAt());
-
-            Tool tool = toolMap.get(favorite.getToolId());
-            if (tool != null) {
-                response.setToolName(tool.getName());
-                response.setToolCategory(tool.getCategory());
-                response.setToolStatus(tool.getStatus());
-                response.setToolImage(tool.getImage());
-                response.setToolDescription(tool.getDescription());
-                response.setToolOwnerId(tool.getOwnerId());
-                response.setToolOwnerName(ownerNameMap.get(tool.getOwnerId()));
-            }
-
-            responses.add(response);
-        }
-        return responses;
-    }
-
-    private ToolFavoriteResponse toResponse(ToolFavorite favorite) {
-        ToolFavoriteResponse response = new ToolFavoriteResponse();
-        response.setId(favorite.getId());
-        response.setUserId(favorite.getUserId());
-        response.setToolId(favorite.getToolId());
-        response.setCreatedAt(favorite.getCreatedAt());
-
-        toolRepository.findById(favorite.getToolId()).ifPresent(tool -> {
-            response.setToolName(tool.getName());
-            response.setToolCategory(tool.getCategory());
-            response.setToolStatus(tool.getStatus());
-            response.setToolImage(tool.getImage());
-            response.setToolDescription(tool.getDescription());
-            response.setToolOwnerId(tool.getOwnerId());
-
-            userRepository.findById(tool.getOwnerId()).ifPresent(user ->
-                    response.setToolOwnerName(user.getUsername())
-            );
-        });
-
-        return response;
     }
 }
