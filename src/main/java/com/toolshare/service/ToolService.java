@@ -11,14 +11,11 @@ import com.toolshare.entity.Tool;
 import com.toolshare.entity.ToolBox;
 import com.toolshare.entity.ToolLogAction;
 import com.toolshare.entity.ToolStatus;
-import com.toolshare.entity.User;
 import com.toolshare.exception.BadRequestException;
 import com.toolshare.exception.ResourceNotFoundException;
+import com.toolshare.mapper.ToolResponseMapper;
 import com.toolshare.repository.ToolBoxRepository;
-import com.toolshare.repository.ToolFavoriteRepository;
 import com.toolshare.repository.ToolRepository;
-import com.toolshare.repository.UserRepository;
-import com.toolshare.util.SecurityUtil;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -26,36 +23,23 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 public class ToolService {
 
     private final ToolRepository toolRepository;
     private final ToolBoxRepository toolBoxRepository;
-    private final UserRepository userRepository;
-    private final ToolReviewService toolReviewService;
-    private final ToolFavoriteRepository toolFavoriteRepository;
     private final ToolLogService toolLogService;
-    private final StatsService statsService;
+    private final ToolResponseMapper toolResponseMapper;
 
-    public ToolService(ToolRepository toolRepository, ToolBoxRepository toolBoxRepository, UserRepository userRepository,
-                       ToolReviewService toolReviewService, ToolFavoriteRepository toolFavoriteRepository,
-                       ToolLogService toolLogService, StatsService statsService) {
+    public ToolService(ToolRepository toolRepository, ToolBoxRepository toolBoxRepository,
+                       ToolLogService toolLogService, ToolResponseMapper toolResponseMapper) {
         this.toolRepository = toolRepository;
         this.toolBoxRepository = toolBoxRepository;
-        this.userRepository = userRepository;
-        this.toolReviewService = toolReviewService;
-        this.toolFavoriteRepository = toolFavoriteRepository;
         this.toolLogService = toolLogService;
-        this.statsService = statsService;
+        this.toolResponseMapper = toolResponseMapper;
     }
 
     public PageResponse<ToolResponse> getAllTools(String keyword, String category, ToolStatus status, Long boxId,
@@ -83,7 +67,7 @@ public class ToolService {
             toolPage = toolRepository.search(keyword, category, status, null, pageable);
         }
 
-        List<ToolResponse> responseList = toResponseList(toolPage.getContent());
+        List<ToolResponse> responseList = toolResponseMapper.toResponseList(toolPage.getContent());
         return PageResponse.of(responseList, toolPage.getTotalElements(), toolPage.getNumber(), toolPage.getSize());
     }
 
@@ -106,7 +90,7 @@ public class ToolService {
             allTools = toolRepository.search(keyword, category, status, null, Pageable.unpaged()).getContent();
         }
 
-        List<ToolResponse> allResponses = toResponseList(allTools);
+        List<ToolResponse> allResponses = toolResponseMapper.toResponseList(allTools);
 
         Comparator<ToolResponse> borrowCountComparator = Comparator.comparing(
                 response -> response.getBorrowCount() != null ? response.getBorrowCount() : 0L
@@ -127,13 +111,13 @@ public class ToolService {
     public ToolResponse getToolById(Long id) {
         Tool tool = toolRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("工具不存在"));
-        return toResponse(tool);
+        return toolResponseMapper.toResponse(tool);
     }
 
     public PageResponse<ToolResponse> getMyTools(Long ownerId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<Tool> toolPage = toolRepository.findByOwnerId(ownerId, pageable);
-        List<ToolResponse> responseList = toResponseList(toolPage.getContent());
+        List<ToolResponse> responseList = toolResponseMapper.toResponseList(toolPage.getContent());
         return PageResponse.of(responseList, toolPage.getTotalElements(), toolPage.getNumber(), toolPage.getSize());
     }
 
@@ -154,7 +138,7 @@ public class ToolService {
         tool.setMaxBorrowDays(request.getMaxBorrowDays());
 
         Tool savedTool = toolRepository.save(tool);
-        return toResponse(savedTool);
+        return toolResponseMapper.toResponse(savedTool);
     }
 
     @Transactional
@@ -198,7 +182,7 @@ public class ToolService {
         }
 
         Tool savedTool = toolRepository.save(tool);
-        return toResponse(savedTool);
+        return toolResponseMapper.toResponse(savedTool);
     }
 
     @Transactional
@@ -216,7 +200,7 @@ public class ToolService {
 
         tool.setStatus(request.getStatus());
         Tool savedTool = toolRepository.save(tool);
-        return toResponse(savedTool);
+        return toolResponseMapper.toResponse(savedTool);
     }
 
     @Transactional
@@ -237,7 +221,7 @@ public class ToolService {
 
         toolLogService.createLogInternal(id, currentUserId, ToolLogAction.REPORT, request.getDescription());
 
-        return toResponse(savedTool);
+        return toolResponseMapper.toResponse(savedTool);
     }
 
     @Transactional
@@ -264,7 +248,7 @@ public class ToolService {
 
         toolLogService.createLogInternal(id, currentUserId, ToolLogAction.REPAIR, request.getDescription());
 
-        return toResponse(savedTool);
+        return toolResponseMapper.toResponse(savedTool);
     }
 
     @Transactional
@@ -279,117 +263,6 @@ public class ToolService {
         toolRepository.delete(tool);
     }
 
-    private List<ToolResponse> toResponseList(List<Tool> tools) {
-        if (tools == null || tools.isEmpty()) {
-            return new ArrayList<>();
-        }
-
-        Set<Long> toolIds = tools.stream().map(Tool::getId).collect(Collectors.toSet());
-        Set<Long> boxIds = tools.stream().map(Tool::getBoxId).collect(Collectors.toSet());
-        Set<Long> ownerIds = tools.stream().map(Tool::getOwnerId).collect(Collectors.toSet());
-
-        Map<Long, Double> averageRatingMap = toolReviewService.getAverageRatingMapByToolIds(new ArrayList<>(toolIds));
-        Map<Long, Long> reviewCountMap = toolReviewService.getReviewCountMapByToolIds(new ArrayList<>(toolIds));
-        Map<Long, String> boxNameMap = new HashMap<>();
-        if (!boxIds.isEmpty()) {
-            toolBoxRepository.findAllById(boxIds).forEach(tb -> boxNameMap.put(tb.getId(), tb.getName()));
-        }
-        Map<Long, String> ownerNameMap = new HashMap<>();
-        if (!ownerIds.isEmpty()) {
-            userRepository.findAllById(ownerIds).forEach(u -> ownerNameMap.put(u.getId(), u.getUsername()));
-        }
-
-        Long currentUserId = SecurityUtil.getCurrentUserId();
-        Set<Long> favoritedToolIds = new HashSet<>();
-        if (currentUserId != null && !toolIds.isEmpty()) {
-            favoritedToolIds = new HashSet<>(toolFavoriteRepository.findFavoritedToolIdsByUserIdAndToolIds(currentUserId, new ArrayList<>(toolIds)));
-        }
-
-        Map<Long, Long> favoriteCountMap = new HashMap<>();
-        if (!toolIds.isEmpty()) {
-            List<Object[]> favCounts = toolFavoriteRepository.countByToolIdsGrouped(new ArrayList<>(toolIds));
-            favoriteCountMap = favCounts.stream()
-                    .collect(Collectors.toMap(
-                            arr -> ((Number) arr[0]).longValue(),
-                            arr -> ((Number) arr[1]).longValue()
-                    ));
-        }
-
-        Map<Long, Long> borrowCountMap = statsService.getBorrowCountMap(new ArrayList<>(toolIds));
-
-        List<ToolResponse> responses = new ArrayList<>();
-        for (Tool tool : tools) {
-            ToolResponse response = new ToolResponse();
-            response.setId(tool.getId());
-            response.setBoxId(tool.getBoxId());
-            response.setName(tool.getName());
-            response.setCategory(tool.getCategory());
-            response.setStatus(tool.getStatus());
-            response.setDescription(tool.getDescription());
-            response.setImage(tool.getImage());
-            response.setPurchaseDate(tool.getPurchaseDate());
-            response.setOwnerId(tool.getOwnerId());
-            response.setCreatedAt(tool.getCreatedAt());
-            response.setMaxBorrowDays(tool.getMaxBorrowDays());
-
-            response.setBoxName(boxNameMap.get(tool.getBoxId()));
-            response.setOwnerName(ownerNameMap.get(tool.getOwnerId()));
-            response.setAverageRating(averageRatingMap.get(tool.getId()));
-            response.setReviewCount(reviewCountMap.get(tool.getId()));
-            response.setIsFavorited(currentUserId != null && favoritedToolIds.contains(tool.getId()));
-
-            Long favoriteCount = favoriteCountMap.getOrDefault(tool.getId(), 0L);
-            Long borrowCount = borrowCountMap.getOrDefault(tool.getId(), 0L);
-            response.setFavoriteCount(favoriteCount);
-            response.setBorrowCount(borrowCount);
-            response.setHotRankScore(borrowCount * 2 + favoriteCount);
-
-            responses.add(response);
-        }
-        return responses;
-    }
-
-    private ToolResponse toResponse(Tool tool) {
-        ToolResponse response = new ToolResponse();
-        response.setId(tool.getId());
-        response.setBoxId(tool.getBoxId());
-        response.setName(tool.getName());
-        response.setCategory(tool.getCategory());
-        response.setStatus(tool.getStatus());
-        response.setDescription(tool.getDescription());
-        response.setImage(tool.getImage());
-        response.setPurchaseDate(tool.getPurchaseDate());
-        response.setOwnerId(tool.getOwnerId());
-        response.setCreatedAt(tool.getCreatedAt());
-        response.setMaxBorrowDays(tool.getMaxBorrowDays());
-
-        toolBoxRepository.findById(tool.getBoxId()).ifPresent(toolBox ->
-                response.setBoxName(toolBox.getName())
-        );
-
-        userRepository.findById(tool.getOwnerId()).ifPresent(user ->
-                response.setOwnerName(user.getUsername())
-        );
-
-        response.setAverageRating(toolReviewService.getAverageRatingByToolId(tool.getId()));
-        response.setReviewCount(toolReviewService.getReviewCountByToolId(tool.getId()));
-
-        Long currentUserId = SecurityUtil.getCurrentUserId();
-        if (currentUserId != null) {
-            response.setIsFavorited(toolFavoriteRepository.existsByUserIdAndToolId(currentUserId, tool.getId()));
-        } else {
-            response.setIsFavorited(false);
-        }
-        Long favoriteCount = toolFavoriteRepository.countByToolId(tool.getId());
-        Long borrowCount = statsService.getBorrowCountMap(java.util.Collections.singletonList(tool.getId()))
-                .getOrDefault(tool.getId(), 0L);
-        response.setFavoriteCount(favoriteCount);
-        response.setBorrowCount(borrowCount);
-        response.setHotRankScore(borrowCount * 2 + favoriteCount);
-
-        return response;
-    }
-
     @Transactional
     public ToolResponse adminDisableTool(Long id) {
         Tool tool = toolRepository.findById(id)
@@ -401,7 +274,7 @@ public class ToolService {
 
         tool.setStatus(ToolStatus.DISABLED);
         Tool savedTool = toolRepository.save(tool);
-        return toResponse(savedTool);
+        return toolResponseMapper.toResponse(savedTool);
     }
 
     @Transactional
@@ -421,7 +294,7 @@ public class ToolService {
         }
 
         Tool savedTool = toolRepository.save(tool);
-        return toResponse(savedTool);
+        return toolResponseMapper.toResponse(savedTool);
     }
 
     public boolean isToolOwner(Long toolId, Long userId) {

@@ -1,9 +1,11 @@
 package com.toolshare.service;
 
+import com.toolshare.dto.toolbox.ToolBoxResponse;
 import com.toolshare.entity.Tool;
 import com.toolshare.entity.ToolBox;
 import com.toolshare.entity.ToolStatus;
 import com.toolshare.exception.BadRequestException;
+import com.toolshare.mapper.ToolBoxResponseMapper;
 import com.toolshare.repository.ToolBoxRepository;
 import com.toolshare.repository.ToolRepository;
 import com.toolshare.repository.UserRepository;
@@ -34,6 +36,9 @@ class ToolBoxServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private ToolBoxResponseMapper toolBoxResponseMapper;
 
     @InjectMocks
     private ToolBoxService toolBoxService;
@@ -69,6 +74,9 @@ class ToolBoxServiceTest {
         originalMaintenanceTool.setBoxId(1L);
         originalMaintenanceTool.setName("原本就处于维护的工具");
         originalMaintenanceTool.setStatus(ToolStatus.MAINTENANCE);
+
+        lenient().when(toolBoxResponseMapper.toResponse(any(ToolBox.class)))
+                .thenReturn(new ToolBoxResponse());
     }
 
     @Test

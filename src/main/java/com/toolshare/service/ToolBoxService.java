@@ -7,12 +7,11 @@ import com.toolshare.dto.toolbox.UpdateToolBoxRequest;
 import com.toolshare.entity.Tool;
 import com.toolshare.entity.ToolBox;
 import com.toolshare.entity.ToolStatus;
-import com.toolshare.entity.User;
 import com.toolshare.exception.BadRequestException;
 import com.toolshare.exception.ResourceNotFoundException;
+import com.toolshare.mapper.ToolBoxResponseMapper;
 import com.toolshare.repository.ToolBoxRepository;
 import com.toolshare.repository.ToolRepository;
-import com.toolshare.repository.UserRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -27,12 +26,13 @@ public class ToolBoxService {
 
     private final ToolBoxRepository toolBoxRepository;
     private final ToolRepository toolRepository;
-    private final UserRepository userRepository;
+    private final ToolBoxResponseMapper toolBoxResponseMapper;
 
-    public ToolBoxService(ToolBoxRepository toolBoxRepository, ToolRepository toolRepository, UserRepository userRepository) {
+    public ToolBoxService(ToolBoxRepository toolBoxRepository, ToolRepository toolRepository,
+                          ToolBoxResponseMapper toolBoxResponseMapper) {
         this.toolBoxRepository = toolBoxRepository;
         this.toolRepository = toolRepository;
-        this.userRepository = userRepository;
+        this.toolBoxResponseMapper = toolBoxResponseMapper;
     }
 
     public PageResponse<ToolBoxResponse> getAllToolBoxes(String keyword, Boolean isActive, int page, int size, String sortBy, String sortDir) {
@@ -40,15 +40,15 @@ public class ToolBoxService {
         Pageable pageable = PageRequest.of(page, size, sort);
 
         Page<ToolBox> toolBoxPage = toolBoxRepository.search(keyword, isActive, pageable);
-        Page<ToolBoxResponse> responsePage = toolBoxPage.map(this::toResponse);
+        List<ToolBoxResponse> content = toolBoxResponseMapper.toResponseList(toolBoxPage.getContent());
 
-        return PageResponse.from(responsePage);
+        return PageResponse.from(toolBoxPage, content);
     }
 
     public ToolBoxResponse getToolBoxById(Long id) {
         ToolBox toolBox = toolBoxRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("工具箱不存在"));
-        return toResponse(toolBox);
+        return toolBoxResponseMapper.toResponse(toolBox);
     }
 
     @Transactional
@@ -68,7 +68,7 @@ public class ToolBoxService {
         toolBox.setIsActive(true);
 
         ToolBox savedToolBox = toolBoxRepository.save(toolBox);
-        return toResponse(savedToolBox);
+        return toolBoxResponseMapper.toResponse(savedToolBox);
     }
 
     @Transactional
@@ -103,7 +103,7 @@ public class ToolBoxService {
         }
 
         ToolBox savedToolBox = toolBoxRepository.save(toolBox);
-        return toResponse(savedToolBox);
+        return toolBoxResponseMapper.toResponse(savedToolBox);
     }
 
     @Transactional
@@ -116,42 +116,6 @@ public class ToolBoxService {
         }
 
         toolBoxRepository.delete(toolBox);
-    }
-
-    public static ToolBoxResponse toToolBoxResponse(ToolBox toolBox, UserRepository userRepository) {
-        ToolBoxResponse response = new ToolBoxResponse();
-        response.setId(toolBox.getId());
-        response.setName(toolBox.getName());
-        response.setLocation(toolBox.getLocation());
-        response.setManagerId(toolBox.getManagerId());
-        response.setCode(toolBox.getCode());
-        response.setImage(toolBox.getImage());
-        response.setIsActive(toolBox.getIsActive());
-        response.setCreatedAt(toolBox.getCreatedAt());
-
-        userRepository.findById(toolBox.getManagerId()).ifPresent(user ->
-                response.setManagerName(user.getUsername())
-        );
-
-        return response;
-    }
-
-    private ToolBoxResponse toResponse(ToolBox toolBox) {
-        ToolBoxResponse response = new ToolBoxResponse();
-        response.setId(toolBox.getId());
-        response.setName(toolBox.getName());
-        response.setLocation(toolBox.getLocation());
-        response.setManagerId(toolBox.getManagerId());
-        response.setCode(toolBox.getCode());
-        response.setImage(toolBox.getImage());
-        response.setIsActive(toolBox.getIsActive());
-        response.setCreatedAt(toolBox.getCreatedAt());
-
-        userRepository.findById(toolBox.getManagerId()).ifPresent(user ->
-                response.setManagerName(user.getUsername())
-        );
-
-        return response;
     }
 
     private void updateToolBoxActiveInternal(ToolBox toolBox, Boolean isActive) {
@@ -204,7 +168,7 @@ public class ToolBoxService {
         updateToolBoxActiveInternal(toolBox, isActive);
 
         ToolBox savedToolBox = toolBoxRepository.save(toolBox);
-        return toResponse(savedToolBox);
+        return toolBoxResponseMapper.toResponse(savedToolBox);
     }
 
     public boolean isToolBoxManager(Long toolBoxId, Long userId) {
