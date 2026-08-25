@@ -191,31 +191,25 @@ public class OverdueRecordService {
 
         List<OverdueRecordResponse> responses = new ArrayList<>();
         for (OverdueRecord record : records) {
-            OverdueRecordResponse response = new OverdueRecordResponse();
-            response.setId(record.getId());
-            response.setBorrowRequestId(record.getBorrowRequestId());
-            response.setToolId(record.getToolId());
-            response.setToolName(toolNameMap.get(record.getToolId()));
-            response.setRequesterId(record.getRequesterId());
-            response.setRequesterName(requesterNameMap.get(record.getRequesterId()));
-            response.setExpectedReturnDate(record.getExpectedReturnDate());
-            response.setOverdueDate(record.getOverdueDate());
-            response.setOverdueDays(record.getOverdueDays());
-            response.setResolved(record.isResolved());
-            response.setResolvedAt(record.getResolvedAt());
-            response.setCreatedAt(record.getCreatedAt());
-            response.setUpdatedAt(record.getUpdatedAt());
-            responses.add(response);
+            responses.add(mapToOverdueRecordResponse(record, toolNameMap, requesterNameMap));
         }
         return responses;
     }
 
     private OverdueRecordResponse toResponse(OverdueRecord record) {
+        return toResponseList(List.of(record)).get(0);
+    }
+
+    private OverdueRecordResponse mapToOverdueRecordResponse(OverdueRecord record,
+                                                             Map<Long, String> toolNameMap,
+                                                             Map<Long, String> requesterNameMap) {
         OverdueRecordResponse response = new OverdueRecordResponse();
         response.setId(record.getId());
         response.setBorrowRequestId(record.getBorrowRequestId());
         response.setToolId(record.getToolId());
+        response.setToolName(toolNameMap.get(record.getToolId()));
         response.setRequesterId(record.getRequesterId());
+        response.setRequesterName(requesterNameMap.get(record.getRequesterId()));
         response.setExpectedReturnDate(record.getExpectedReturnDate());
         response.setOverdueDate(record.getOverdueDate());
         response.setOverdueDays(record.getOverdueDays());
@@ -223,14 +217,6 @@ public class OverdueRecordService {
         response.setResolvedAt(record.getResolvedAt());
         response.setCreatedAt(record.getCreatedAt());
         response.setUpdatedAt(record.getUpdatedAt());
-
-        toolRepository.findById(record.getToolId()).ifPresent(tool ->
-                response.setToolName(tool.getName())
-        );
-        userRepository.findById(record.getRequesterId()).ifPresent(user ->
-                response.setRequesterName(user.getUsername())
-        );
-
         return response;
     }
 }

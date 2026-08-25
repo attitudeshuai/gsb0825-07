@@ -316,8 +316,14 @@ public class MaintenancePlanService {
         LocalDate today = LocalDate.now();
         List<MaintenancePlan> plans = maintenancePlanRepository.findByToolIdIn(toolIds);
 
+        List<Long> planToolIds = plans.stream().map(MaintenancePlan::getToolId).collect(Collectors.toList());
+        Map<Long, String> toolNameMap = new HashMap<>();
+        if (!planToolIds.isEmpty()) {
+            toolRepository.findAllById(planToolIds).forEach(t -> toolNameMap.put(t.getId(), t.getName()));
+        }
+
         for (MaintenancePlan plan : plans) {
-            result.put(plan.getToolId(), toResponse(plan, today));
+            result.put(plan.getToolId(), buildResponse(plan, toolNameMap.get(plan.getToolId()), today));
         }
         return result;
     }
@@ -338,24 +344,23 @@ public class MaintenancePlanService {
     private List<MaintenancePlanResponse> toResponseList(List<MaintenancePlan> plans, LocalDate today) {
         if (plans == null || plans.isEmpty()) return new ArrayList<>();
 
-        plans = plans.stream().filter(p -> p != null).collect(Collectors.toList());
+        List<MaintenancePlan> filtered = plans.stream().filter(p -> p != null).collect(Collectors.toList());
 
-        List<Long> toolIds = plans.stream().map(MaintenancePlan::getToolId).collect(Collectors.toList());
+        List<Long> toolIds = filtered.stream().map(MaintenancePlan::getToolId).collect(Collectors.toList());
         Map<Long, String> toolNameMap = new HashMap<>();
-        toolRepository.findAllById(toolIds).forEach(t -> toolNameMap.put(t.getId(), t.getName()));
+        if (!toolIds.isEmpty()) {
+            toolRepository.findAllById(toolIds).forEach(t -> toolNameMap.put(t.getId(), t.getName()));
+        }
 
         List<MaintenancePlanResponse> responses = new ArrayList<>();
-        for (MaintenancePlan plan : plans) {
-            MaintenancePlanResponse resp = buildResponse(plan, toolNameMap.get(plan.getToolId()), today);
-            responses.add(resp);
+        for (MaintenancePlan plan : filtered) {
+            responses.add(buildResponse(plan, toolNameMap.get(plan.getToolId()), today));
         }
         return responses;
     }
 
     private MaintenancePlanResponse toResponse(MaintenancePlan plan, LocalDate today) {
-        String toolName = toolRepository.findById(plan.getToolId())
-                .map(Tool::getName).orElse(null);
-        return buildResponse(plan, toolName, today);
+        return toResponseList(List.of(plan), today).get(0);
     }
 
     private MaintenancePlanResponse buildResponse(MaintenancePlan plan, String toolName, LocalDate today) {

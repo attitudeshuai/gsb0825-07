@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class HelpBoardService {
@@ -111,8 +112,8 @@ public class HelpBoardService {
             postPage = helpPostRepository.findAll(pageable);
         }
 
-        Page<HelpPostResponse> responsePage = postPage.map(this::toHelpPostResponse);
-        return PageResponse.from(responsePage);
+        List<HelpPostResponse> responseList = toHelpPostResponseList(postPage.getContent());
+        return PageResponse.of(responseList, postPage.getTotalElements(), postPage.getNumber(), postPage.getSize());
     }
 
     public PageResponse<HelpPostResponse> getMyHelpPosts(Long posterId, int page, int size, HelpPostStatus status) {
@@ -125,15 +126,15 @@ public class HelpBoardService {
             postPage = helpPostRepository.findByPosterId(posterId, pageable);
         }
 
-        Page<HelpPostResponse> responsePage = postPage.map(this::toHelpPostResponse);
-        return PageResponse.from(responsePage);
+        List<HelpPostResponse> responseList = toHelpPostResponseList(postPage.getContent());
+        return PageResponse.of(responseList, postPage.getTotalElements(), postPage.getNumber(), postPage.getSize());
     }
 
     public PageResponse<HelpPostResponse> getAcceptedHelpPosts(Long acceptedResponderId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<HelpPost> postPage = helpPostRepository.findByAcceptedResponderId(acceptedResponderId, pageable);
-        Page<HelpPostResponse> responsePage = postPage.map(this::toHelpPostResponse);
-        return PageResponse.from(responsePage);
+        List<HelpPostResponse> responseList = toHelpPostResponseList(postPage.getContent());
+        return PageResponse.of(responseList, postPage.getTotalElements(), postPage.getNumber(), postPage.getSize());
     }
 
     @Transactional
@@ -235,21 +236,52 @@ public class HelpBoardService {
                 .orElseThrow(() -> new ResourceNotFoundException("求助帖不存在"));
 
         List<HelpResponse> responses = helpResponseRepository.findByHelpPostIdOrderByCreatedAtDesc(postId);
-        List<HelpResponseResponse> result = new ArrayList<>();
-        for (HelpResponse response : responses) {
-            result.add(toHelpResponseResponse(response));
-        }
-        return result;
+        return toHelpResponseResponseList(responses);
     }
 
     public PageResponse<HelpResponseResponse> getMyHelpResponses(Long responderId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<HelpResponse> responsePage = helpResponseRepository.findByResponderId(responderId, pageable);
-        Page<HelpResponseResponse> resultPage = responsePage.map(this::toHelpResponseResponse);
-        return PageResponse.from(resultPage);
+        List<HelpResponseResponse> responseList = toHelpResponseResponseList(responsePage.getContent());
+        return PageResponse.of(responseList, responsePage.getTotalElements(), responsePage.getNumber(), responsePage.getSize());
+    }
+
+    private List<HelpPostResponse> toHelpPostResponseList(List<HelpPost> helpPosts) {
+        if (helpPosts == null || helpPosts.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        Set<Long> postIds = helpPosts.stream().map(HelpPost::getId).collect(Collectors.toSet());
+        Set<Long> posterIds = helpPosts.stream().map(HelpPost::getPosterId).collect(Collectors.toSet());
+        Set<Long> acceptedResponderIds = helpPosts.stream()
+                .map(HelpPost::getAcceptedResponderId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Map<Long, Long> responseCountMap = helpPostRepository.findResponseCountMapByHelpPostIds(new ArrayList<>(postIds));
+
+        Map<Long, String> userNameMap = new HashMap<>();
+        Set<Long> allUserIds = new HashSet<>();
+        allUserIds.addAll(posterIds);
+        allUserIds.addAll(acceptedResponderIds);
+        if (!allUserIds.isEmpty()) {
+            userRepository.findAllById(allUserIds).forEach(u -> userNameMap.put(u.getId(), u.getUsername()));
+        }
+
+        List<HelpPostResponse> responses = new ArrayList<>();
+        for (HelpPost helpPost : helpPosts) {
+            responses.add(mapToHelpPostResponse(helpPost, responseCountMap, userNameMap));
+        }
+        return responses;
     }
 
     private HelpPostResponse toHelpPostResponse(HelpPost helpPost) {
+        return toHelpPostResponseList(List.of(helpPost)).get(0);
+    }
+
+    private HelpPostResponse mapToHelpPostResponse(HelpPost helpPost,
+                                                   Map<Long, Long> responseCountMap,
+                                                   Map<Long, String> userNameMap) {
         HelpPostResponse response = new HelpPostResponse();
         response.setId(helpPost.getId());
         response.setPosterId(helpPost.getPosterId());
@@ -263,23 +295,49 @@ public class HelpBoardService {
         response.setCreatedAt(helpPost.getCreatedAt());
         response.setUpdatedAt(helpPost.getUpdatedAt());
 
-        Long count = helpPostRepository.countResponsesByHelpPostId(helpPost.getId());
+        Long count = responseCountMap.get(helpPost.getId());
         response.setResponseCount(count != null ? count.intValue() : 0);
 
-        userRepository.findById(helpPost.getPosterId()).ifPresent(user ->
-                response.setPosterName(user.getUsername())
-        );
-
+        response.setPosterName(userNameMap.get(helpPost.getPosterId()));
         if (helpPost.getAcceptedResponderId() != null) {
-            userRepository.findById(helpPost.getAcceptedResponderId()).ifPresent(user ->
-                    response.setAcceptedResponderName(user.getUsername())
-            );
+            response.setAcceptedResponderName(userNameMap.get(helpPost.getAcceptedResponderId()));
         }
 
         return response;
     }
 
+    private List<HelpResponseResponse> toHelpResponseResponseList(List<HelpResponse> helpResponses) {
+        if (helpResponses == null || helpResponses.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        Set<Long> responderIds = helpResponses.stream().map(HelpResponse::getResponderId).collect(Collectors.toSet());
+        Set<Long> helpPostIds = helpResponses.stream().map(HelpResponse::getHelpPostId).collect(Collectors.toSet());
+
+        Map<Long, String> responderNameMap = new HashMap<>();
+        if (!responderIds.isEmpty()) {
+            userRepository.findAllById(responderIds).forEach(u -> responderNameMap.put(u.getId(), u.getUsername()));
+        }
+
+        Map<Long, String> helpPostTitleMap = new HashMap<>();
+        if (!helpPostIds.isEmpty()) {
+            helpPostRepository.findAllById(helpPostIds).forEach(p -> helpPostTitleMap.put(p.getId(), p.getTitle()));
+        }
+
+        List<HelpResponseResponse> responses = new ArrayList<>();
+        for (HelpResponse helpResponse : helpResponses) {
+            responses.add(mapToHelpResponseResponse(helpResponse, responderNameMap, helpPostTitleMap));
+        }
+        return responses;
+    }
+
     private HelpResponseResponse toHelpResponseResponse(HelpResponse helpResponse) {
+        return toHelpResponseResponseList(List.of(helpResponse)).get(0);
+    }
+
+    private HelpResponseResponse mapToHelpResponseResponse(HelpResponse helpResponse,
+                                                           Map<Long, String> responderNameMap,
+                                                           Map<Long, String> helpPostTitleMap) {
         HelpResponseResponse response = new HelpResponseResponse();
         response.setId(helpResponse.getId());
         response.setHelpPostId(helpResponse.getHelpPostId());
@@ -288,15 +346,8 @@ public class HelpBoardService {
         response.setContactInfo(helpResponse.getContactInfo());
         response.setAccepted(helpResponse.isAccepted());
         response.setCreatedAt(helpResponse.getCreatedAt());
-
-        userRepository.findById(helpResponse.getResponderId()).ifPresent(user ->
-                response.setResponderName(user.getUsername())
-        );
-
-        helpPostRepository.findById(helpResponse.getHelpPostId()).ifPresent(post ->
-                response.setHelpPostTitle(post.getTitle())
-        );
-
+        response.setResponderName(responderNameMap.get(helpResponse.getResponderId()));
+        response.setHelpPostTitle(helpPostTitleMap.get(helpResponse.getHelpPostId()));
         return response;
     }
 }
