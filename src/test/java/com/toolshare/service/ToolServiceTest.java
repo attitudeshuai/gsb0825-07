@@ -2,7 +2,6 @@ package com.toolshare.service;
 
 import com.toolshare.dto.tool.CompleteRepairRequest;
 import com.toolshare.dto.tool.ReportToolRequest;
-import com.toolshare.dto.tool.ToolResponse;
 import com.toolshare.dto.tool.UpdateToolRequest;
 import com.toolshare.dto.tool.UpdateToolStatusRequest;
 import com.toolshare.entity.Tool;
@@ -11,10 +10,9 @@ import com.toolshare.entity.ToolLogAction;
 import com.toolshare.entity.ToolStatus;
 import com.toolshare.exception.BadRequestException;
 import com.toolshare.exception.ResourceNotFoundException;
+import com.toolshare.mapper.ToolResponseMapper;
 import com.toolshare.repository.ToolBoxRepository;
-import com.toolshare.repository.ToolFavoriteRepository;
 import com.toolshare.repository.ToolRepository;
-import com.toolshare.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,12 +21,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.Collections;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,19 +37,10 @@ class ToolServiceTest {
     private ToolBoxRepository toolBoxRepository;
 
     @Mock
-    private UserRepository userRepository;
-
-    @Mock
-    private ToolReviewService toolReviewService;
-
-    @Mock
-    private ToolFavoriteRepository toolFavoriteRepository;
+    private ToolResponseMapper toolResponseMapper;
 
     @Mock
     private ToolLogService toolLogService;
-
-    @Mock
-    private StatsService statsService;
 
     @InjectMocks
     private ToolService toolService;
@@ -115,11 +102,6 @@ class ToolServiceTest {
 
         when(toolRepository.findById(10L)).thenReturn(Optional.of(tool));
         when(toolRepository.save(any(Tool.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(toolBoxRepository.findById(any())).thenReturn(Optional.empty());
-        when(userRepository.findById(any())).thenReturn(Optional.empty());
-        when(toolReviewService.getAverageRatingByToolId(any())).thenReturn(0.0);
-        when(toolReviewService.getReviewCountByToolId(any())).thenReturn(0L);
-        when(statsService.getBorrowCountMap(any())).thenReturn(Collections.emptyMap());
 
         toolService.updateToolStatus(10L, request, ownerId);
 
@@ -135,11 +117,6 @@ class ToolServiceTest {
 
         when(toolRepository.findById(10L)).thenReturn(Optional.of(tool));
         when(toolRepository.save(any(Tool.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(toolBoxRepository.findById(any())).thenReturn(Optional.empty());
-        when(userRepository.findById(any())).thenReturn(Optional.empty());
-        when(toolReviewService.getAverageRatingByToolId(any())).thenReturn(0.0);
-        when(toolReviewService.getReviewCountByToolId(any())).thenReturn(0L);
-        when(statsService.getBorrowCountMap(any())).thenReturn(Collections.emptyMap());
 
         toolService.updateToolStatus(10L, request, ownerId);
 
@@ -183,11 +160,6 @@ class ToolServiceTest {
     void adminDisableTool_AvailableTool_ShouldSucceed() {
         when(toolRepository.findById(10L)).thenReturn(Optional.of(tool));
         when(toolRepository.save(any(Tool.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(toolBoxRepository.findById(any())).thenReturn(Optional.empty());
-        when(userRepository.findById(any())).thenReturn(Optional.empty());
-        when(toolReviewService.getAverageRatingByToolId(any())).thenReturn(0.0);
-        when(toolReviewService.getReviewCountByToolId(any())).thenReturn(0L);
-        when(statsService.getBorrowCountMap(any())).thenReturn(Collections.emptyMap());
 
         toolService.adminDisableTool(10L);
 
@@ -222,10 +194,6 @@ class ToolServiceTest {
         when(toolRepository.findById(10L)).thenReturn(Optional.of(tool));
         when(toolBoxRepository.findById(1L)).thenReturn(Optional.of(inactiveBox));
         when(toolRepository.save(any(Tool.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(userRepository.findById(any())).thenReturn(Optional.empty());
-        when(toolReviewService.getAverageRatingByToolId(any())).thenReturn(0.0);
-        when(toolReviewService.getReviewCountByToolId(any())).thenReturn(0L);
-        when(statsService.getBorrowCountMap(any())).thenReturn(Collections.emptyMap());
 
         toolService.adminEnableTool(10L);
 
@@ -245,10 +213,6 @@ class ToolServiceTest {
         when(toolRepository.findById(10L)).thenReturn(Optional.of(tool));
         when(toolBoxRepository.findById(1L)).thenReturn(Optional.of(activeBox));
         when(toolRepository.save(any(Tool.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(userRepository.findById(any())).thenReturn(Optional.empty());
-        when(toolReviewService.getAverageRatingByToolId(any())).thenReturn(0.0);
-        when(toolReviewService.getReviewCountByToolId(any())).thenReturn(0L);
-        when(statsService.getBorrowCountMap(any())).thenReturn(Collections.emptyMap());
 
         toolService.adminEnableTool(10L);
 
@@ -286,13 +250,8 @@ class ToolServiceTest {
 
         when(toolRepository.findById(10L)).thenReturn(Optional.of(tool));
         when(toolRepository.save(any(Tool.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(toolBoxRepository.findById(any())).thenReturn(Optional.empty());
-        when(userRepository.findById(any())).thenReturn(Optional.empty());
-        when(toolReviewService.getAverageRatingByToolId(any())).thenReturn(0.0);
-        when(toolReviewService.getReviewCountByToolId(any())).thenReturn(0L);
-        when(statsService.getBorrowCountMap(any())).thenReturn(Collections.emptyMap());
 
-        ToolResponse result = toolService.reportTool(10L, request, ownerId);
+        toolService.reportTool(10L, request, ownerId);
 
         verify(toolRepository).save(tool);
         assertEquals(ToolStatus.MAINTENANCE, tool.getStatus());
@@ -362,12 +321,8 @@ class ToolServiceTest {
         when(toolRepository.findById(10L)).thenReturn(Optional.of(tool));
         when(toolBoxRepository.findById(1L)).thenReturn(Optional.of(activeBox));
         when(toolRepository.save(any(Tool.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(userRepository.findById(any())).thenReturn(Optional.empty());
-        when(toolReviewService.getAverageRatingByToolId(any())).thenReturn(0.0);
-        when(toolReviewService.getReviewCountByToolId(any())).thenReturn(0L);
-        when(statsService.getBorrowCountMap(any())).thenReturn(Collections.emptyMap());
 
-        ToolResponse result = toolService.completeRepair(10L, request, ownerId);
+        toolService.completeRepair(10L, request, ownerId);
 
         verify(toolRepository).save(tool);
         assertEquals(ToolStatus.AVAILABLE, tool.getStatus());
@@ -424,12 +379,8 @@ class ToolServiceTest {
         when(toolRepository.findById(10L)).thenReturn(Optional.of(tool));
         when(toolBoxRepository.findById(1L)).thenReturn(Optional.of(inactiveBox));
         when(toolRepository.save(any(Tool.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(userRepository.findById(any())).thenReturn(Optional.empty());
-        when(toolReviewService.getAverageRatingByToolId(any())).thenReturn(0.0);
-        when(toolReviewService.getReviewCountByToolId(any())).thenReturn(0L);
-        when(statsService.getBorrowCountMap(any())).thenReturn(Collections.emptyMap());
 
-        ToolResponse result = toolService.completeRepair(10L, request, ownerId);
+        toolService.completeRepair(10L, request, ownerId);
 
         verify(toolRepository).save(tool);
         assertEquals(ToolStatus.MAINTENANCE, tool.getStatus());

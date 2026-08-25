@@ -9,7 +9,6 @@ import com.toolshare.dto.scan.ScanToolItem;
 import com.toolshare.entity.BorrowRequest;
 import com.toolshare.entity.BorrowRequestStatus;
 import com.toolshare.entity.NotificationType;
-import com.toolshare.entity.OverdueRecord;
 import com.toolshare.entity.Tool;
 import com.toolshare.entity.ToolBox;
 import com.toolshare.entity.ToolLogAction;
@@ -18,7 +17,6 @@ import com.toolshare.entity.User;
 import com.toolshare.exception.BadRequestException;
 import com.toolshare.exception.ResourceNotFoundException;
 import com.toolshare.repository.BorrowRequestRepository;
-import com.toolshare.repository.OverdueRecordRepository;
 import com.toolshare.repository.ToolBoxRepository;
 import com.toolshare.repository.ToolRepository;
 import com.toolshare.repository.UserRepository;
@@ -26,7 +24,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -42,7 +39,7 @@ public class ScanService {
     private final BorrowRequestRepository borrowRequestRepository;
     private final ToolLogService toolLogService;
     private final NotificationService notificationService;
-    private final OverdueRecordRepository overdueRecordRepository;
+    private final OverdueRecordService overdueRecordService;
     private final BorrowRequestService borrowRequestService;
 
     public ScanService(ToolBoxRepository toolBoxRepository,
@@ -51,7 +48,7 @@ public class ScanService {
                        BorrowRequestRepository borrowRequestRepository,
                        ToolLogService toolLogService,
                        NotificationService notificationService,
-                       OverdueRecordRepository overdueRecordRepository,
+                       OverdueRecordService overdueRecordService,
                        BorrowRequestService borrowRequestService) {
         this.toolBoxRepository = toolBoxRepository;
         this.toolRepository = toolRepository;
@@ -59,7 +56,7 @@ public class ScanService {
         this.borrowRequestRepository = borrowRequestRepository;
         this.toolLogService = toolLogService;
         this.notificationService = notificationService;
-        this.overdueRecordRepository = overdueRecordRepository;
+        this.overdueRecordService = overdueRecordService;
         this.borrowRequestService = borrowRequestService;
     }
 
@@ -194,18 +191,14 @@ public class ScanService {
                 continue;
             }
 
-            if (tool.getMaxBorrowDays() != null && tool.getMaxBorrowDays() > 0) {
-                long borrowDays = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), request.getExpectedReturnDate()) + 1;
-                if (borrowDays > tool.getMaxBorrowDays()) {
-                    item.setSuccess(false);
-                    item.setMessage(String.format(
-                            "该工具单次借用最长允许 %d 天，当前选择的借用时长为 %d 天，请缩短借用时间",
-                            tool.getMaxBorrowDays(), borrowDays
-                    ));
-                    failCount++;
-                    results.add(item);
-                    continue;
-                }
+            try {
+                borrowRequestService.validateBorrowPeriod(tool, LocalDate.now(), request.getExpectedReturnDate());
+            } catch (BadRequestException e) {
+                item.setSuccess(false);
+                item.setMessage(e.getMessage());
+                failCount++;
+                results.add(item);
+                continue;
             }
 
             try {
@@ -359,13 +352,7 @@ public class ScanService {
                 );
             }
 
-            overdueRecordRepository.findByBorrowRequestId(borrowRequest.getId()).ifPresent(record -> {
-                if (!record.isResolved()) {
-                    record.setResolved(true);
-                    record.setResolvedAt(LocalDateTime.now());
-                    overdueRecordRepository.save(record);
-                }
-            });
+            overdueRecordService.markResolvedIfExists(borrowRequest.getId());
 
             item.setSuccess(true);
             item.setMessage("归还成功");

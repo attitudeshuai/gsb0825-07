@@ -7,13 +7,14 @@ import com.toolshare.dto.borrowrequest.UpdateBorrowStatusRequest;
 import com.toolshare.entity.BorrowRequest;
 import com.toolshare.entity.BorrowRequestStatus;
 import com.toolshare.entity.NotificationType;
-import com.toolshare.entity.OverdueRecord;
 import com.toolshare.entity.Tool;
 import com.toolshare.entity.ToolBox;
 import com.toolshare.entity.ToolLogAction;
 import com.toolshare.entity.ToolStatus;
 import com.toolshare.entity.User;
 import com.toolshare.exception.BadRequestException;
+import com.toolshare.mapper.BorrowRequestResponseMapper;
+import com.toolshare.mapper.ToolBoxResponseMapper;
 import com.toolshare.repository.BorrowRequestRepository;
 import com.toolshare.repository.OverdueRecordRepository;
 import com.toolshare.repository.ToolBoxRepository;
@@ -69,6 +70,12 @@ class BorrowRequestServiceTest {
     @Mock
     private OverdueRecordRepository overdueRecordRepository;
 
+    @Mock
+    private BorrowRequestResponseMapper borrowRequestResponseMapper;
+
+    @Mock
+    private OverdueRecordService overdueRecordService;
+
     @InjectMocks
     private BorrowRequestService borrowRequestService;
 
@@ -118,6 +125,8 @@ class BorrowRequestServiceTest {
         owner.setId(ownerId);
         owner.setUsername("所有人");
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(owner));
+
+        when(borrowRequestResponseMapper.toResponse(any())).thenReturn(new BorrowRequestResponse());
     }
 
     @Test
@@ -208,7 +217,7 @@ class BorrowRequestServiceTest {
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(new User()));
 
         ToolBoxService testBoxService = new ToolBoxService(
-                toolBoxRepository, toolRepository, userRepository
+                toolBoxRepository, toolRepository, mock(ToolBoxResponseMapper.class)
         );
         testBoxService.adminUpdateToolBoxActive(1L, true);
 
@@ -254,27 +263,21 @@ class BorrowRequestServiceTest {
     }
 
     @Test
-    @DisplayName("归还时如果有逾期记录，应标记为已解决")
+    @DisplayName("归还时如果有逾期记录，应触发逾期记录标记为已解决")
     void updateBorrowStatus_Returned_WithOverdue_ShouldResolveOverdue() {
         UpdateBorrowStatusRequest request = new UpdateBorrowStatusRequest();
         request.setStatus(BorrowRequestStatus.RETURNED);
-
-        OverdueRecord overdueRecord = new OverdueRecord();
-        overdueRecord.setResolved(false);
 
         when(borrowRequestRepository.findById(1000L)).thenReturn(Optional.of(borrowRequest));
         when(toolRepository.findById(10L)).thenReturn(Optional.of(tool));
         when(toolBoxRepository.findById(1L)).thenReturn(Optional.of(activeToolBox));
         when(toolRepository.save(any(Tool.class))).thenAnswer(inv -> inv.getArgument(0));
         when(borrowRequestRepository.save(any(BorrowRequest.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(overdueRecordRepository.findByBorrowRequestId(1000L)).thenReturn(Optional.of(overdueRecord));
         when(toolReviewService.hasReviewed(any())).thenReturn(false);
 
         borrowRequestService.updateBorrowStatus(1000L, request, ownerId);
 
-        assertTrue(overdueRecord.isResolved());
-        assertNotNull(overdueRecord.getResolvedAt());
-        verify(overdueRecordRepository).save(overdueRecord);
+        verify(overdueRecordService).markResolvedIfExists(1000L);
     }
 
     @Test
@@ -327,7 +330,7 @@ class BorrowRequestServiceTest {
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(new User()));
 
         ToolBoxService testBoxService = new ToolBoxService(
-                toolBoxRepository, toolRepository, userRepository
+                toolBoxRepository, toolRepository, mock(ToolBoxResponseMapper.class)
         );
         testBoxService.adminUpdateToolBoxActive(1L, true);
 
