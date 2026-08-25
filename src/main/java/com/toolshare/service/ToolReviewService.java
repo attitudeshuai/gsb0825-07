@@ -5,15 +5,12 @@ import com.toolshare.dto.tooleview.CreateToolReviewRequest;
 import com.toolshare.dto.tooleview.ToolReviewResponse;
 import com.toolshare.entity.BorrowRequest;
 import com.toolshare.entity.BorrowRequestStatus;
-import com.toolshare.entity.Tool;
 import com.toolshare.entity.ToolReview;
-import com.toolshare.entity.User;
 import com.toolshare.exception.BadRequestException;
 import com.toolshare.exception.ResourceNotFoundException;
 import com.toolshare.repository.BorrowRequestRepository;
-import com.toolshare.repository.ToolRepository;
 import com.toolshare.repository.ToolReviewRepository;
-import com.toolshare.repository.UserRepository;
+import com.toolshare.service.mapper.ToolReviewResponseMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -33,17 +30,14 @@ public class ToolReviewService {
 
     private final ToolReviewRepository toolReviewRepository;
     private final BorrowRequestRepository borrowRequestRepository;
-    private final ToolRepository toolRepository;
-    private final UserRepository userRepository;
+    private final ToolReviewResponseMapper toolReviewResponseMapper;
 
     public ToolReviewService(ToolReviewRepository toolReviewRepository,
                              BorrowRequestRepository borrowRequestRepository,
-                             ToolRepository toolRepository,
-                             UserRepository userRepository) {
+                             ToolReviewResponseMapper toolReviewResponseMapper) {
         this.toolReviewRepository = toolReviewRepository;
         this.borrowRequestRepository = borrowRequestRepository;
-        this.toolRepository = toolRepository;
-        this.userRepository = userRepository;
+        this.toolReviewResponseMapper = toolReviewResponseMapper;
     }
 
     @Transactional
@@ -71,27 +65,25 @@ public class ToolReviewService {
         review.setComment(request.getComment());
 
         ToolReview savedReview = toolReviewRepository.save(review);
-        return toResponse(savedReview);
+        return toolReviewResponseMapper.toResponse(savedReview);
     }
 
     public PageResponse<ToolReviewResponse> getReviewsByToolId(Long toolId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<ToolReview> reviewPage = toolReviewRepository.findByToolId(toolId, pageable);
-        Page<ToolReviewResponse> responsePage = reviewPage.map(this::toResponse);
-        return PageResponse.from(responsePage);
+        return toolReviewResponseMapper.toPageResponse(reviewPage);
     }
 
     public PageResponse<ToolReviewResponse> getMyReviews(Long reviewerId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<ToolReview> reviewPage = toolReviewRepository.findByReviewerId(reviewerId, pageable);
-        Page<ToolReviewResponse> responsePage = reviewPage.map(this::toResponse);
-        return PageResponse.from(responsePage);
+        return toolReviewResponseMapper.toPageResponse(reviewPage);
     }
 
     public ToolReviewResponse getReviewByBorrowRequestId(Long borrowRequestId) {
         ToolReview review = toolReviewRepository.findByBorrowRequestId(borrowRequestId)
                 .orElseThrow(() -> new ResourceNotFoundException("该借用申请暂无评价"));
-        return toResponse(review);
+        return toolReviewResponseMapper.toResponse(review);
     }
 
     public Double getAverageRatingByToolId(Long toolId) {
@@ -139,27 +131,6 @@ public class ToolReviewService {
             result.put(id, reviewedSet.contains(id));
         }
         return result;
-    }
-
-    private ToolReviewResponse toResponse(ToolReview review) {
-        ToolReviewResponse response = new ToolReviewResponse();
-        response.setId(review.getId());
-        response.setToolId(review.getToolId());
-        response.setBorrowRequestId(review.getBorrowRequestId());
-        response.setReviewerId(review.getReviewerId());
-        response.setRating(review.getRating());
-        response.setComment(review.getComment());
-        response.setCreatedAt(review.getCreatedAt());
-
-        toolRepository.findById(review.getToolId()).ifPresent(tool ->
-                response.setToolName(tool.getName())
-        );
-
-        userRepository.findById(review.getReviewerId()).ifPresent(user ->
-                response.setReviewerName(user.getUsername())
-        );
-
-        return response;
     }
 
     public boolean hasReviewed(Long borrowRequestId) {

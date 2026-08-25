@@ -6,7 +6,7 @@ import com.toolshare.entity.ToolStatus;
 import com.toolshare.exception.BadRequestException;
 import com.toolshare.repository.ToolBoxRepository;
 import com.toolshare.repository.ToolRepository;
-import com.toolshare.repository.UserRepository;
+import com.toolshare.service.mapper.ToolBoxResponseMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,7 +33,7 @@ class ToolBoxServiceTest {
     private ToolRepository toolRepository;
 
     @Mock
-    private UserRepository userRepository;
+    private ToolBoxResponseMapper toolBoxResponseMapper;
 
     @InjectMocks
     private ToolBoxService toolBoxService;

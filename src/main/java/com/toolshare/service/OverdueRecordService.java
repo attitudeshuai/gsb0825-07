@@ -4,14 +4,11 @@ import com.toolshare.dto.PageResponse;
 import com.toolshare.dto.overduerecord.OverdueRecordResponse;
 import com.toolshare.entity.BorrowRequest;
 import com.toolshare.entity.OverdueRecord;
-import com.toolshare.entity.Tool;
-import com.toolshare.entity.User;
 import com.toolshare.exception.BadRequestException;
 import com.toolshare.exception.ResourceNotFoundException;
 import com.toolshare.repository.BorrowRequestRepository;
 import com.toolshare.repository.OverdueRecordRepository;
-import com.toolshare.repository.ToolRepository;
-import com.toolshare.repository.UserRepository;
+import com.toolshare.service.mapper.OverdueRecordResponseMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -22,31 +19,22 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 public class OverdueRecordService {
 
     private final OverdueRecordRepository overdueRecordRepository;
     private final BorrowRequestRepository borrowRequestRepository;
-    private final ToolRepository toolRepository;
-    private final UserRepository userRepository;
+    private final OverdueRecordResponseMapper overdueRecordResponseMapper;
 
     public OverdueRecordService(OverdueRecordRepository overdueRecordRepository,
                                 BorrowRequestRepository borrowRequestRepository,
-                                ToolRepository toolRepository,
-                                UserRepository userRepository) {
+                                OverdueRecordResponseMapper overdueRecordResponseMapper) {
         this.overdueRecordRepository = overdueRecordRepository;
         this.borrowRequestRepository = borrowRequestRepository;
-        this.toolRepository = toolRepository;
-        this.userRepository = userRepository;
+        this.overdueRecordResponseMapper = overdueRecordResponseMapper;
     }
 
     @Transactional
@@ -105,7 +93,7 @@ public class OverdueRecordService {
         record.setResolved(true);
         record.setResolvedAt(LocalDateTime.now());
         OverdueRecord saved = overdueRecordRepository.save(record);
-        return toResponse(saved);
+        return overdueRecordResponseMapper.toResponse(saved);
     }
 
     public PageResponse<OverdueRecordResponse> getAllOverdueRecords(Boolean resolved, Long requesterId,
@@ -130,7 +118,7 @@ public class OverdueRecordService {
             recordPage = overdueRecordRepository.findAll(pageable);
         }
 
-        List<OverdueRecordResponse> responseList = toResponseList(recordPage.getContent());
+        List<OverdueRecordResponse> responseList = overdueRecordResponseMapper.toResponseList(recordPage.getContent());
         return PageResponse.of(responseList, recordPage.getTotalElements(), recordPage.getNumber(), recordPage.getSize());
     }
 
@@ -142,7 +130,7 @@ public class OverdueRecordService {
             throw new BadRequestException("无权查看此逾期记录");
         }
 
-        return toResponse(record);
+        return overdueRecordResponseMapper.toResponse(record);
     }
 
     public PageResponse<OverdueRecordResponse> getMyOverdueRecords(Long requesterId, Boolean resolved, int page, int size) {
@@ -156,7 +144,7 @@ public class OverdueRecordService {
             recordPage = overdueRecordRepository.findByRequesterId(requesterId, pageable);
         }
 
-        List<OverdueRecordResponse> responseList = toResponseList(recordPage.getContent());
+        List<OverdueRecordResponse> responseList = overdueRecordResponseMapper.toResponseList(recordPage.getContent());
         return PageResponse.of(responseList, recordPage.getTotalElements(), recordPage.getNumber(), recordPage.getSize());
     }
 
@@ -170,67 +158,5 @@ public class OverdueRecordService {
 
     public long getOverdueCountByDateRange(LocalDate startDate, LocalDate endDate) {
         return overdueRecordRepository.countByOverdueDateBetween(startDate, endDate);
-    }
-
-    private List<OverdueRecordResponse> toResponseList(List<OverdueRecord> records) {
-        if (records == null || records.isEmpty()) {
-            return new ArrayList<>();
-        }
-
-        Set<Long> toolIds = records.stream().map(OverdueRecord::getToolId).collect(Collectors.toSet());
-        Set<Long> requesterIds = records.stream().map(OverdueRecord::getRequesterId).collect(Collectors.toSet());
-
-        Map<Long, String> toolNameMap = new HashMap<>();
-        if (!toolIds.isEmpty()) {
-            toolRepository.findAllById(toolIds).forEach(t -> toolNameMap.put(t.getId(), t.getName()));
-        }
-        Map<Long, String> requesterNameMap = new HashMap<>();
-        if (!requesterIds.isEmpty()) {
-            userRepository.findAllById(requesterIds).forEach(u -> requesterNameMap.put(u.getId(), u.getUsername()));
-        }
-
-        List<OverdueRecordResponse> responses = new ArrayList<>();
-        for (OverdueRecord record : records) {
-            OverdueRecordResponse response = new OverdueRecordResponse();
-            response.setId(record.getId());
-            response.setBorrowRequestId(record.getBorrowRequestId());
-            response.setToolId(record.getToolId());
-            response.setToolName(toolNameMap.get(record.getToolId()));
-            response.setRequesterId(record.getRequesterId());
-            response.setRequesterName(requesterNameMap.get(record.getRequesterId()));
-            response.setExpectedReturnDate(record.getExpectedReturnDate());
-            response.setOverdueDate(record.getOverdueDate());
-            response.setOverdueDays(record.getOverdueDays());
-            response.setResolved(record.isResolved());
-            response.setResolvedAt(record.getResolvedAt());
-            response.setCreatedAt(record.getCreatedAt());
-            response.setUpdatedAt(record.getUpdatedAt());
-            responses.add(response);
-        }
-        return responses;
-    }
-
-    private OverdueRecordResponse toResponse(OverdueRecord record) {
-        OverdueRecordResponse response = new OverdueRecordResponse();
-        response.setId(record.getId());
-        response.setBorrowRequestId(record.getBorrowRequestId());
-        response.setToolId(record.getToolId());
-        response.setRequesterId(record.getRequesterId());
-        response.setExpectedReturnDate(record.getExpectedReturnDate());
-        response.setOverdueDate(record.getOverdueDate());
-        response.setOverdueDays(record.getOverdueDays());
-        response.setResolved(record.isResolved());
-        response.setResolvedAt(record.getResolvedAt());
-        response.setCreatedAt(record.getCreatedAt());
-        response.setUpdatedAt(record.getUpdatedAt());
-
-        toolRepository.findById(record.getToolId()).ifPresent(tool ->
-                response.setToolName(tool.getName())
-        );
-        userRepository.findById(record.getRequesterId()).ifPresent(user ->
-                response.setRequesterName(user.getUsername())
-        );
-
-        return response;
     }
 }

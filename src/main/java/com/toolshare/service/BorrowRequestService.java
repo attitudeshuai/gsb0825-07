@@ -8,7 +8,6 @@ import com.toolshare.dto.borrowrequest.UpdateBorrowStatusRequest;
 import com.toolshare.entity.BorrowRequest;
 import com.toolshare.entity.BorrowRequestStatus;
 import com.toolshare.entity.NotificationType;
-import com.toolshare.entity.OverdueRecord;
 import com.toolshare.entity.Tool;
 import com.toolshare.entity.ToolBox;
 import com.toolshare.entity.ToolLogAction;
@@ -21,6 +20,7 @@ import com.toolshare.repository.OverdueRecordRepository;
 import com.toolshare.repository.ToolBoxRepository;
 import com.toolshare.repository.ToolRepository;
 import com.toolshare.repository.UserRepository;
+import com.toolshare.service.mapper.BorrowRequestResponseMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -31,14 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 public class BorrowRequestService {
@@ -49,8 +43,8 @@ public class BorrowRequestService {
     private final UserRepository userRepository;
     private final ToolLogService toolLogService;
     private final NotificationService notificationService;
-    private final ToolReviewService toolReviewService;
     private final OverdueRecordRepository overdueRecordRepository;
+    private final BorrowRequestResponseMapper borrowRequestResponseMapper;
 
     public BorrowRequestService(BorrowRequestRepository borrowRequestRepository,
                                 ToolRepository toolRepository,
@@ -58,16 +52,16 @@ public class BorrowRequestService {
                                 UserRepository userRepository,
                                 ToolLogService toolLogService,
                                 NotificationService notificationService,
-                                ToolReviewService toolReviewService,
-                                OverdueRecordRepository overdueRecordRepository) {
+                                OverdueRecordRepository overdueRecordRepository,
+                                BorrowRequestResponseMapper borrowRequestResponseMapper) {
         this.borrowRequestRepository = borrowRequestRepository;
         this.toolRepository = toolRepository;
         this.toolBoxRepository = toolBoxRepository;
         this.userRepository = userRepository;
         this.toolLogService = toolLogService;
         this.notificationService = notificationService;
-        this.toolReviewService = toolReviewService;
         this.overdueRecordRepository = overdueRecordRepository;
+        this.borrowRequestResponseMapper = borrowRequestResponseMapper;
     }
 
     public PageResponse<BorrowRequestResponse> getAllBorrowRequests(BorrowRequestStatus status, Long requesterId,
@@ -77,20 +71,20 @@ public class BorrowRequestService {
         Pageable pageable = PageRequest.of(page, size, sort);
 
         Page<BorrowRequest> requestPage = borrowRequestRepository.search(status, requesterId, toolId, startDate, endDate, pageable);
-        List<BorrowRequestResponse> responseList = toResponseList(requestPage.getContent());
+        List<BorrowRequestResponse> responseList = borrowRequestResponseMapper.toResponseList(requestPage.getContent());
         return PageResponse.of(responseList, requestPage.getTotalElements(), requestPage.getNumber(), requestPage.getSize());
     }
 
     public BorrowRequestResponse getBorrowRequestById(Long id) {
         BorrowRequest borrowRequest = borrowRequestRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("借用申请不存在"));
-        return toResponse(borrowRequest);
+        return borrowRequestResponseMapper.toResponse(borrowRequest);
     }
 
     public PageResponse<BorrowRequestResponse> getMyBorrowRequests(Long requesterId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<BorrowRequest> requestPage = borrowRequestRepository.findByRequesterId(requesterId, pageable);
-        List<BorrowRequestResponse> responseList = toResponseList(requestPage.getContent());
+        List<BorrowRequestResponse> responseList = borrowRequestResponseMapper.toResponseList(requestPage.getContent());
         return PageResponse.of(responseList, requestPage.getTotalElements(), requestPage.getNumber(), requestPage.getSize());
     }
 
@@ -150,7 +144,7 @@ public class BorrowRequestService {
                 savedRequest.getId()
         );
 
-        return toResponse(savedRequest);
+        return borrowRequestResponseMapper.toResponse(savedRequest);
     }
 
     @Transactional
@@ -205,7 +199,7 @@ public class BorrowRequestService {
         }
 
         BorrowRequest savedRequest = borrowRequestRepository.save(borrowRequest);
-        return toResponse(savedRequest);
+        return borrowRequestResponseMapper.toResponse(savedRequest);
     }
 
     @Transactional
@@ -312,7 +306,7 @@ public class BorrowRequestService {
 
         borrowRequest.setStatus(newStatus);
         BorrowRequest savedRequest = borrowRequestRepository.save(borrowRequest);
-        return toResponse(savedRequest);
+        return borrowRequestResponseMapper.toResponse(savedRequest);
     }
 
     @Transactional
@@ -329,99 +323,6 @@ public class BorrowRequestService {
         }
 
         borrowRequestRepository.delete(borrowRequest);
-    }
-
-    private List<BorrowRequestResponse> toResponseList(List<BorrowRequest> borrowRequests) {
-        if (borrowRequests == null || borrowRequests.isEmpty()) {
-            return new ArrayList<>();
-        }
-
-        Set<Long> borrowRequestIds = borrowRequests.stream().map(BorrowRequest::getId).collect(Collectors.toSet());
-        Set<Long> toolIds = borrowRequests.stream().map(BorrowRequest::getToolId).collect(Collectors.toSet());
-        Set<Long> requesterIds = borrowRequests.stream().map(BorrowRequest::getRequesterId).collect(Collectors.toSet());
-
-        Map<Long, Boolean> hasReviewedMap = toolReviewService.getHasReviewedMapByBorrowRequestIds(new ArrayList<>(borrowRequestIds));
-        Map<Long, String> toolNameMap = new HashMap<>();
-        if (!toolIds.isEmpty()) {
-            toolRepository.findAllById(toolIds).forEach(t -> toolNameMap.put(t.getId(), t.getName()));
-        }
-        Map<Long, String> requesterNameMap = new HashMap<>();
-        if (!requesterIds.isEmpty()) {
-            userRepository.findAllById(requesterIds).forEach(u -> requesterNameMap.put(u.getId(), u.getUsername()));
-        }
-
-        List<BorrowRequestResponse> responses = new ArrayList<>();
-        LocalDate today = LocalDate.now();
-        for (BorrowRequest borrowRequest : borrowRequests) {
-            BorrowRequestResponse response = new BorrowRequestResponse();
-            response.setId(borrowRequest.getId());
-            response.setToolId(borrowRequest.getToolId());
-            response.setRequesterId(borrowRequest.getRequesterId());
-            response.setStartDate(borrowRequest.getStartDate());
-            response.setExpectedReturnDate(borrowRequest.getExpectedReturnDate());
-            response.setActualReturnDate(borrowRequest.getActualReturnDate());
-            response.setStatus(borrowRequest.getStatus());
-            response.setRemark(borrowRequest.getRemark());
-            response.setCreatedAt(borrowRequest.getCreatedAt());
-
-            response.setToolName(toolNameMap.get(borrowRequest.getToolId()));
-            response.setRequesterName(requesterNameMap.get(borrowRequest.getRequesterId()));
-            response.setHasReviewed(hasReviewedMap.getOrDefault(borrowRequest.getId(), false));
-
-            populateOverdueFields(response, borrowRequest, today);
-
-            responses.add(response);
-        }
-        return responses;
-    }
-
-    private BorrowRequestResponse toResponse(BorrowRequest borrowRequest) {
-        BorrowRequestResponse response = new BorrowRequestResponse();
-        response.setId(borrowRequest.getId());
-        response.setToolId(borrowRequest.getToolId());
-        response.setRequesterId(borrowRequest.getRequesterId());
-        response.setStartDate(borrowRequest.getStartDate());
-        response.setExpectedReturnDate(borrowRequest.getExpectedReturnDate());
-        response.setActualReturnDate(borrowRequest.getActualReturnDate());
-        response.setStatus(borrowRequest.getStatus());
-        response.setRemark(borrowRequest.getRemark());
-        response.setCreatedAt(borrowRequest.getCreatedAt());
-
-        toolRepository.findById(borrowRequest.getToolId()).ifPresent(tool ->
-                response.setToolName(tool.getName())
-        );
-
-        userRepository.findById(borrowRequest.getRequesterId()).ifPresent(user ->
-                response.setRequesterName(user.getUsername())
-        );
-
-        response.setHasReviewed(toolReviewService.hasReviewed(borrowRequest.getId()));
-
-        populateOverdueFields(response, borrowRequest, LocalDate.now());
-
-        return response;
-    }
-
-    private void populateOverdueFields(BorrowRequestResponse response, BorrowRequest borrowRequest, LocalDate today) {
-        boolean isApproved = borrowRequest.getStatus() == BorrowRequestStatus.APPROVED;
-        boolean notReturned = borrowRequest.getActualReturnDate() == null;
-
-        if (isApproved && notReturned) {
-            if (borrowRequest.getExpectedReturnDate().isBefore(today)) {
-                response.setIsOverdue(true);
-                response.setOverdueDays((int) ChronoUnit.DAYS.between(borrowRequest.getExpectedReturnDate(), today));
-                response.setIsDueSoon(false);
-            } else {
-                response.setIsOverdue(false);
-                response.setOverdueDays(0);
-                long daysUntilDue = ChronoUnit.DAYS.between(today, borrowRequest.getExpectedReturnDate());
-                response.setIsDueSoon(daysUntilDue <= 3 && daysUntilDue >= 0);
-            }
-        } else {
-            response.setIsOverdue(false);
-            response.setOverdueDays(0);
-            response.setIsDueSoon(false);
-        }
     }
 
     public void checkBookingConflict(Long toolId, LocalDate startDate, LocalDate endDate, Long excludeId,

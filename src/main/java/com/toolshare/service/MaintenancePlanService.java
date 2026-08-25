@@ -11,6 +11,7 @@ import com.toolshare.exception.ResourceNotFoundException;
 import com.toolshare.repository.MaintenancePlanRepository;
 import com.toolshare.repository.ToolRepository;
 import com.toolshare.repository.UserRepository;
+import com.toolshare.service.mapper.MaintenancePlanResponseMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -24,7 +25,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 public class MaintenancePlanService {
@@ -36,17 +36,20 @@ public class MaintenancePlanService {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final ToolLogService toolLogService;
+    private final MaintenancePlanResponseMapper maintenancePlanResponseMapper;
 
     public MaintenancePlanService(MaintenancePlanRepository maintenancePlanRepository,
                                    ToolRepository toolRepository,
                                    UserRepository userRepository,
                                    NotificationService notificationService,
-                                   ToolLogService toolLogService) {
+                                   ToolLogService toolLogService,
+                                   MaintenancePlanResponseMapper maintenancePlanResponseMapper) {
         this.maintenancePlanRepository = maintenancePlanRepository;
         this.toolRepository = toolRepository;
         this.userRepository = userRepository;
         this.notificationService = notificationService;
         this.toolLogService = toolLogService;
+        this.maintenancePlanResponseMapper = maintenancePlanResponseMapper;
     }
 
     public PageResponse<MaintenancePlanResponse> getAllPlans(Boolean isActive, Boolean overdue,
@@ -73,7 +76,7 @@ public class MaintenancePlanService {
             planPage = maintenancePlanRepository.findAll(pageable);
         }
 
-        List<MaintenancePlanResponse> responseList = toResponseList(planPage.getContent(), today);
+        List<MaintenancePlanResponse> responseList = maintenancePlanResponseMapper.toResponseList(planPage.getContent());
         long total = planPage.getTotalElements();
         return PageResponse.of(responseList, total, planPage.getNumber(), planPage.getSize());
     }
@@ -81,13 +84,13 @@ public class MaintenancePlanService {
     public MaintenancePlanResponse getPlanById(Long id) {
         MaintenancePlan plan = maintenancePlanRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("维护计划不存在"));
-        return toResponse(plan, LocalDate.now());
+        return maintenancePlanResponseMapper.toResponse(plan);
     }
 
     public MaintenancePlanResponse getPlanByToolId(Long toolId) {
         MaintenancePlan plan = maintenancePlanRepository.findByToolId(toolId)
                 .orElseThrow(() -> new ResourceNotFoundException("该工具暂无维护计划"));
-        return toResponse(plan, LocalDate.now());
+        return maintenancePlanResponseMapper.toResponse(plan);
     }
 
     @Transactional
@@ -126,7 +129,7 @@ public class MaintenancePlanService {
         plan.setIsDueNotified(false);
 
         MaintenancePlan saved = maintenancePlanRepository.save(plan);
-        return toResponse(saved, LocalDate.now());
+        return maintenancePlanResponseMapper.toResponse(saved);
     }
 
     @Transactional
@@ -158,7 +161,7 @@ public class MaintenancePlanService {
         }
 
         MaintenancePlan saved = maintenancePlanRepository.save(plan);
-        return toResponse(saved, LocalDate.now());
+        return maintenancePlanResponseMapper.toResponse(saved);
     }
 
     @Transactional
@@ -200,7 +203,7 @@ public class MaintenancePlanService {
                 "工具「" + tool.getName() + "」的定期维护已完成，维护日期：" + request.getMaintenanceDate(),
                 plan.getId());
 
-        return toResponse(saved, LocalDate.now());
+        return maintenancePlanResponseMapper.toResponse(saved);
     }
 
     @Transactional
@@ -313,11 +316,10 @@ public class MaintenancePlanService {
         Map<Long, MaintenancePlanResponse> result = new HashMap<>();
         if (toolIds == null || toolIds.isEmpty()) return result;
 
-        LocalDate today = LocalDate.now();
         List<MaintenancePlan> plans = maintenancePlanRepository.findByToolIdIn(toolIds);
 
         for (MaintenancePlan plan : plans) {
-            result.put(plan.getToolId(), toResponse(plan, today));
+            result.put(plan.getToolId(), maintenancePlanResponseMapper.toResponse(plan));
         }
         return result;
     }
@@ -333,48 +335,5 @@ public class MaintenancePlanService {
                     relatedId
             );
         }
-    }
-
-    private List<MaintenancePlanResponse> toResponseList(List<MaintenancePlan> plans, LocalDate today) {
-        if (plans == null || plans.isEmpty()) return new ArrayList<>();
-
-        plans = plans.stream().filter(p -> p != null).collect(Collectors.toList());
-
-        List<Long> toolIds = plans.stream().map(MaintenancePlan::getToolId).collect(Collectors.toList());
-        Map<Long, String> toolNameMap = new HashMap<>();
-        toolRepository.findAllById(toolIds).forEach(t -> toolNameMap.put(t.getId(), t.getName()));
-
-        List<MaintenancePlanResponse> responses = new ArrayList<>();
-        for (MaintenancePlan plan : plans) {
-            MaintenancePlanResponse resp = buildResponse(plan, toolNameMap.get(plan.getToolId()), today);
-            responses.add(resp);
-        }
-        return responses;
-    }
-
-    private MaintenancePlanResponse toResponse(MaintenancePlan plan, LocalDate today) {
-        String toolName = toolRepository.findById(plan.getToolId())
-                .map(Tool::getName).orElse(null);
-        return buildResponse(plan, toolName, today);
-    }
-
-    private MaintenancePlanResponse buildResponse(MaintenancePlan plan, String toolName, LocalDate today) {
-        long daysUntilDue = ChronoUnit.DAYS.between(today, plan.getNextMaintenanceDate());
-        boolean isOverdue = daysUntilDue < 0;
-
-        return new MaintenancePlanResponse(
-                plan.getId(),
-                plan.getToolId(),
-                toolName,
-                plan.getIntervalDays(),
-                plan.getLastMaintenanceDate(),
-                plan.getNextMaintenanceDate(),
-                plan.getDescription(),
-                plan.getIsActive(),
-                plan.getCreatedAt(),
-                plan.getUpdatedAt(),
-                daysUntilDue,
-                isOverdue
-        );
     }
 }
