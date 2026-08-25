@@ -115,47 +115,34 @@ public class ToolFavoriteService {
 
         List<ToolFavoriteResponse> responses = new ArrayList<>();
         for (ToolFavorite favorite : favorites) {
-            ToolFavoriteResponse response = new ToolFavoriteResponse();
-            response.setId(favorite.getId());
-            response.setUserId(favorite.getUserId());
-            response.setToolId(favorite.getToolId());
-            response.setCreatedAt(favorite.getCreatedAt());
-
-            Tool tool = toolMap.get(favorite.getToolId());
-            if (tool != null) {
-                response.setToolName(tool.getName());
-                response.setToolCategory(tool.getCategory());
-                response.setToolStatus(tool.getStatus());
-                response.setToolImage(tool.getImage());
-                response.setToolDescription(tool.getDescription());
-                response.setToolOwnerId(tool.getOwnerId());
-                response.setToolOwnerName(ownerNameMap.get(tool.getOwnerId()));
-            }
-
-            responses.add(response);
+            responses.add(mapToToolFavoriteResponse(favorite, toolMap, ownerNameMap));
         }
         return responses;
     }
 
     private ToolFavoriteResponse toResponse(ToolFavorite favorite) {
+        return toResponseList(List.of(favorite)).get(0);
+    }
+
+    private ToolFavoriteResponse mapToToolFavoriteResponse(ToolFavorite favorite,
+                                                           Map<Long, Tool> toolMap,
+                                                           Map<Long, String> ownerNameMap) {
         ToolFavoriteResponse response = new ToolFavoriteResponse();
         response.setId(favorite.getId());
         response.setUserId(favorite.getUserId());
         response.setToolId(favorite.getToolId());
         response.setCreatedAt(favorite.getCreatedAt());
 
-        toolRepository.findById(favorite.getToolId()).ifPresent(tool -> {
+        Tool tool = toolMap.get(favorite.getToolId());
+        if (tool != null) {
             response.setToolName(tool.getName());
             response.setToolCategory(tool.getCategory());
             response.setToolStatus(tool.getStatus());
             response.setToolImage(tool.getImage());
             response.setToolDescription(tool.getDescription());
             response.setToolOwnerId(tool.getOwnerId());
-
-            userRepository.findById(tool.getOwnerId()).ifPresent(user ->
-                    response.setToolOwnerName(user.getUsername())
-            );
-        });
+            response.setToolOwnerName(ownerNameMap.get(tool.getOwnerId()));
+        }
 
         return response;
     }

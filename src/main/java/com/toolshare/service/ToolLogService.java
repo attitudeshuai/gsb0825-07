@@ -4,10 +4,8 @@ import com.toolshare.dto.PageResponse;
 import com.toolshare.dto.toollog.CreateToolLogRequest;
 import com.toolshare.dto.toollog.ToolLogResponse;
 import com.toolshare.dto.toollog.UpdateToolLogRequest;
-import com.toolshare.entity.Tool;
 import com.toolshare.entity.ToolLog;
 import com.toolshare.entity.ToolLogAction;
-import com.toolshare.entity.User;
 import com.toolshare.exception.BadRequestException;
 import com.toolshare.exception.ResourceNotFoundException;
 import com.toolshare.repository.ToolLogRepository;
@@ -26,7 +24,12 @@ import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class ToolLogService {
@@ -50,9 +53,8 @@ public class ToolLogService {
         Pageable pageable = PageRequest.of(page, size, sort);
 
         Page<ToolLog> logPage = toolLogRepository.search(toolId, userId, action, startTime, endTime, pageable);
-        Page<ToolLogResponse> responsePage = logPage.map(this::toResponse);
-
-        return PageResponse.from(responsePage);
+        List<ToolLogResponse> responseList = toResponseList(logPage.getContent());
+        return PageResponse.of(responseList, logPage.getTotalElements(), logPage.getNumber(), logPage.getSize());
     }
 
     public ToolLogResponse getToolLogById(Long id) {
@@ -64,8 +66,8 @@ public class ToolLogService {
     public PageResponse<ToolLogResponse> getMyToolLogs(Long userId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<ToolLog> logPage = toolLogRepository.findByUserId(userId, pageable);
-        Page<ToolLogResponse> responsePage = logPage.map(this::toResponse);
-        return PageResponse.from(responsePage);
+        List<ToolLogResponse> responseList = toResponseList(logPage.getContent());
+        return PageResponse.of(responseList, logPage.getTotalElements(), logPage.getNumber(), logPage.getSize());
     }
 
     @Transactional
@@ -130,6 +132,19 @@ public class ToolLogService {
                                        LocalDateTime startTime, LocalDateTime endTime) {
         List<ToolLog> logs = toolLogRepository.searchForExport(toolId, userId, action, startTime, endTime);
 
+        Set<Long> toolIds = logs.stream().map(ToolLog::getToolId).collect(Collectors.toSet());
+        Set<Long> userIds = logs.stream().map(ToolLog::getUserId).collect(Collectors.toSet());
+
+        Map<Long, String> toolNameMap = new HashMap<>();
+        if (!toolIds.isEmpty()) {
+            toolRepository.findAllById(toolIds).forEach(t -> toolNameMap.put(t.getId(), t.getName()));
+        }
+
+        Map<Long, String> userNameMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            userRepository.findAllById(userIds).forEach(u -> userNameMap.put(u.getId(), u.getUsername()));
+        }
+
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (PrintWriter writer = new PrintWriter(new OutputStreamWriter(baos, StandardCharsets.UTF_8))) {
             writer.print('\uFEFF');
@@ -138,12 +153,8 @@ public class ToolLogService {
 
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
             for (ToolLog log : logs) {
-                String toolName = toolRepository.findById(log.getToolId())
-                        .map(Tool::getName)
-                        .orElse("");
-                String userName = userRepository.findById(log.getUserId())
-                        .map(User::getUsername)
-                        .orElse("");
+                String toolName = toolNameMap.getOrDefault(log.getToolId(), "");
+                String userName = userNameMap.getOrDefault(log.getUserId(), "");
 
                 writer.printf("%d,%d,%s,%d,%s,%s,%s,%s%n",
                         log.getId(),
@@ -185,7 +196,38 @@ public class ToolLogService {
         };
     }
 
+    private List<ToolLogResponse> toResponseList(List<ToolLog> logs) {
+        if (logs == null || logs.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        Set<Long> toolIds = logs.stream().map(ToolLog::getToolId).collect(Collectors.toSet());
+        Set<Long> userIds = logs.stream().map(ToolLog::getUserId).collect(Collectors.toSet());
+
+        Map<Long, String> toolNameMap = new HashMap<>();
+        if (!toolIds.isEmpty()) {
+            toolRepository.findAllById(toolIds).forEach(t -> toolNameMap.put(t.getId(), t.getName()));
+        }
+
+        Map<Long, String> userNameMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            userRepository.findAllById(userIds).forEach(u -> userNameMap.put(u.getId(), u.getUsername()));
+        }
+
+        List<ToolLogResponse> responses = new ArrayList<>();
+        for (ToolLog log : logs) {
+            responses.add(mapToToolLogResponse(log, toolNameMap, userNameMap));
+        }
+        return responses;
+    }
+
     private ToolLogResponse toResponse(ToolLog toolLog) {
+        return toResponseList(List.of(toolLog)).get(0);
+    }
+
+    private ToolLogResponse mapToToolLogResponse(ToolLog toolLog,
+                                                 Map<Long, String> toolNameMap,
+                                                 Map<Long, String> userNameMap) {
         ToolLogResponse response = new ToolLogResponse();
         response.setId(toolLog.getId());
         response.setToolId(toolLog.getToolId());
@@ -193,15 +235,8 @@ public class ToolLogService {
         response.setAction(toolLog.getAction());
         response.setDescription(toolLog.getDescription());
         response.setCreatedAt(toolLog.getCreatedAt());
-
-        toolRepository.findById(toolLog.getToolId()).ifPresent(tool ->
-                response.setToolName(tool.getName())
-        );
-
-        userRepository.findById(toolLog.getUserId()).ifPresent(user ->
-                response.setUserName(user.getUsername())
-        );
-
+        response.setToolName(toolNameMap.get(toolLog.getToolId()));
+        response.setUserName(userNameMap.get(toolLog.getUserId()));
         return response;
     }
 }

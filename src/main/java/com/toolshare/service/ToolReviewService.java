@@ -21,12 +21,14 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class ToolReviewService {
@@ -77,15 +79,15 @@ public class ToolReviewService {
     public PageResponse<ToolReviewResponse> getReviewsByToolId(Long toolId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<ToolReview> reviewPage = toolReviewRepository.findByToolId(toolId, pageable);
-        Page<ToolReviewResponse> responsePage = reviewPage.map(this::toResponse);
-        return PageResponse.from(responsePage);
+        List<ToolReviewResponse> responseList = toResponseList(reviewPage.getContent());
+        return PageResponse.of(responseList, reviewPage.getTotalElements(), reviewPage.getNumber(), reviewPage.getSize());
     }
 
     public PageResponse<ToolReviewResponse> getMyReviews(Long reviewerId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<ToolReview> reviewPage = toolReviewRepository.findByReviewerId(reviewerId, pageable);
-        Page<ToolReviewResponse> responsePage = reviewPage.map(this::toResponse);
-        return PageResponse.from(responsePage);
+        List<ToolReviewResponse> responseList = toResponseList(reviewPage.getContent());
+        return PageResponse.of(responseList, reviewPage.getTotalElements(), reviewPage.getNumber(), reviewPage.getSize());
     }
 
     public ToolReviewResponse getReviewByBorrowRequestId(Long borrowRequestId) {
@@ -141,7 +143,38 @@ public class ToolReviewService {
         return result;
     }
 
+    private List<ToolReviewResponse> toResponseList(List<ToolReview> reviews) {
+        if (reviews == null || reviews.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        Set<Long> toolIds = reviews.stream().map(ToolReview::getToolId).collect(Collectors.toSet());
+        Set<Long> reviewerIds = reviews.stream().map(ToolReview::getReviewerId).collect(Collectors.toSet());
+
+        Map<Long, String> toolNameMap = new HashMap<>();
+        if (!toolIds.isEmpty()) {
+            toolRepository.findAllById(toolIds).forEach(t -> toolNameMap.put(t.getId(), t.getName()));
+        }
+
+        Map<Long, String> reviewerNameMap = new HashMap<>();
+        if (!reviewerIds.isEmpty()) {
+            userRepository.findAllById(reviewerIds).forEach(u -> reviewerNameMap.put(u.getId(), u.getUsername()));
+        }
+
+        List<ToolReviewResponse> responses = new ArrayList<>();
+        for (ToolReview review : reviews) {
+            responses.add(mapToToolReviewResponse(review, toolNameMap, reviewerNameMap));
+        }
+        return responses;
+    }
+
     private ToolReviewResponse toResponse(ToolReview review) {
+        return toResponseList(List.of(review)).get(0);
+    }
+
+    private ToolReviewResponse mapToToolReviewResponse(ToolReview review,
+                                                       Map<Long, String> toolNameMap,
+                                                       Map<Long, String> reviewerNameMap) {
         ToolReviewResponse response = new ToolReviewResponse();
         response.setId(review.getId());
         response.setToolId(review.getToolId());
@@ -150,15 +183,8 @@ public class ToolReviewService {
         response.setRating(review.getRating());
         response.setComment(review.getComment());
         response.setCreatedAt(review.getCreatedAt());
-
-        toolRepository.findById(review.getToolId()).ifPresent(tool ->
-                response.setToolName(tool.getName())
-        );
-
-        userRepository.findById(review.getReviewerId()).ifPresent(user ->
-                response.setReviewerName(user.getUsername())
-        );
-
+        response.setToolName(toolNameMap.get(review.getToolId()));
+        response.setReviewerName(reviewerNameMap.get(review.getReviewerId()));
         return response;
     }
 

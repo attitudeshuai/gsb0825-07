@@ -290,10 +290,12 @@ public class ToolService {
 
         Map<Long, Double> averageRatingMap = toolReviewService.getAverageRatingMapByToolIds(new ArrayList<>(toolIds));
         Map<Long, Long> reviewCountMap = toolReviewService.getReviewCountMapByToolIds(new ArrayList<>(toolIds));
+
         Map<Long, String> boxNameMap = new HashMap<>();
         if (!boxIds.isEmpty()) {
             toolBoxRepository.findAllById(boxIds).forEach(tb -> boxNameMap.put(tb.getId(), tb.getName()));
         }
+
         Map<Long, String> ownerNameMap = new HashMap<>();
         if (!ownerIds.isEmpty()) {
             userRepository.findAllById(ownerIds).forEach(u -> ownerNameMap.put(u.getId(), u.getUsername()));
@@ -319,37 +321,25 @@ public class ToolService {
 
         List<ToolResponse> responses = new ArrayList<>();
         for (Tool tool : tools) {
-            ToolResponse response = new ToolResponse();
-            response.setId(tool.getId());
-            response.setBoxId(tool.getBoxId());
-            response.setName(tool.getName());
-            response.setCategory(tool.getCategory());
-            response.setStatus(tool.getStatus());
-            response.setDescription(tool.getDescription());
-            response.setImage(tool.getImage());
-            response.setPurchaseDate(tool.getPurchaseDate());
-            response.setOwnerId(tool.getOwnerId());
-            response.setCreatedAt(tool.getCreatedAt());
-            response.setMaxBorrowDays(tool.getMaxBorrowDays());
-
-            response.setBoxName(boxNameMap.get(tool.getBoxId()));
-            response.setOwnerName(ownerNameMap.get(tool.getOwnerId()));
-            response.setAverageRating(averageRatingMap.get(tool.getId()));
-            response.setReviewCount(reviewCountMap.get(tool.getId()));
-            response.setIsFavorited(currentUserId != null && favoritedToolIds.contains(tool.getId()));
-
-            Long favoriteCount = favoriteCountMap.getOrDefault(tool.getId(), 0L);
-            Long borrowCount = borrowCountMap.getOrDefault(tool.getId(), 0L);
-            response.setFavoriteCount(favoriteCount);
-            response.setBorrowCount(borrowCount);
-            response.setHotRankScore(borrowCount * 2 + favoriteCount);
-
-            responses.add(response);
+            responses.add(mapToToolResponse(tool, boxNameMap, ownerNameMap, averageRatingMap,
+                    reviewCountMap, favoritedToolIds, favoriteCountMap, borrowCountMap, currentUserId));
         }
         return responses;
     }
 
     private ToolResponse toResponse(Tool tool) {
+        return toResponseList(List.of(tool)).get(0);
+    }
+
+    private ToolResponse mapToToolResponse(Tool tool,
+                                           Map<Long, String> boxNameMap,
+                                           Map<Long, String> ownerNameMap,
+                                           Map<Long, Double> averageRatingMap,
+                                           Map<Long, Long> reviewCountMap,
+                                           Set<Long> favoritedToolIds,
+                                           Map<Long, Long> favoriteCountMap,
+                                           Map<Long, Long> borrowCountMap,
+                                           Long currentUserId) {
         ToolResponse response = new ToolResponse();
         response.setId(tool.getId());
         response.setBoxId(tool.getBoxId());
@@ -363,26 +353,14 @@ public class ToolService {
         response.setCreatedAt(tool.getCreatedAt());
         response.setMaxBorrowDays(tool.getMaxBorrowDays());
 
-        toolBoxRepository.findById(tool.getBoxId()).ifPresent(toolBox ->
-                response.setBoxName(toolBox.getName())
-        );
+        response.setBoxName(boxNameMap.get(tool.getBoxId()));
+        response.setOwnerName(ownerNameMap.get(tool.getOwnerId()));
+        response.setAverageRating(averageRatingMap.get(tool.getId()));
+        response.setReviewCount(reviewCountMap.get(tool.getId()));
+        response.setIsFavorited(currentUserId != null && favoritedToolIds.contains(tool.getId()));
 
-        userRepository.findById(tool.getOwnerId()).ifPresent(user ->
-                response.setOwnerName(user.getUsername())
-        );
-
-        response.setAverageRating(toolReviewService.getAverageRatingByToolId(tool.getId()));
-        response.setReviewCount(toolReviewService.getReviewCountByToolId(tool.getId()));
-
-        Long currentUserId = SecurityUtil.getCurrentUserId();
-        if (currentUserId != null) {
-            response.setIsFavorited(toolFavoriteRepository.existsByUserIdAndToolId(currentUserId, tool.getId()));
-        } else {
-            response.setIsFavorited(false);
-        }
-        Long favoriteCount = toolFavoriteRepository.countByToolId(tool.getId());
-        Long borrowCount = statsService.getBorrowCountMap(java.util.Collections.singletonList(tool.getId()))
-                .getOrDefault(tool.getId(), 0L);
+        Long favoriteCount = favoriteCountMap.getOrDefault(tool.getId(), 0L);
+        Long borrowCount = borrowCountMap.getOrDefault(tool.getId(), 0L);
         response.setFavoriteCount(favoriteCount);
         response.setBorrowCount(borrowCount);
         response.setHotRankScore(borrowCount * 2 + favoriteCount);

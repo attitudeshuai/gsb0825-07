@@ -20,7 +20,12 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class ToolBoxService {
@@ -40,9 +45,8 @@ public class ToolBoxService {
         Pageable pageable = PageRequest.of(page, size, sort);
 
         Page<ToolBox> toolBoxPage = toolBoxRepository.search(keyword, isActive, pageable);
-        Page<ToolBoxResponse> responsePage = toolBoxPage.map(this::toResponse);
-
-        return PageResponse.from(responsePage);
+        List<ToolBoxResponse> responseList = toResponseList(toolBoxPage.getContent());
+        return PageResponse.of(responseList, toolBoxPage.getTotalElements(), toolBoxPage.getNumber(), toolBoxPage.getSize());
     }
 
     public ToolBoxResponse getToolBoxById(Long id) {
@@ -118,25 +122,29 @@ public class ToolBoxService {
         toolBoxRepository.delete(toolBox);
     }
 
-    public static ToolBoxResponse toToolBoxResponse(ToolBox toolBox, UserRepository userRepository) {
-        ToolBoxResponse response = new ToolBoxResponse();
-        response.setId(toolBox.getId());
-        response.setName(toolBox.getName());
-        response.setLocation(toolBox.getLocation());
-        response.setManagerId(toolBox.getManagerId());
-        response.setCode(toolBox.getCode());
-        response.setImage(toolBox.getImage());
-        response.setIsActive(toolBox.getIsActive());
-        response.setCreatedAt(toolBox.getCreatedAt());
+    private List<ToolBoxResponse> toResponseList(List<ToolBox> toolBoxes) {
+        if (toolBoxes == null || toolBoxes.isEmpty()) {
+            return new ArrayList<>();
+        }
 
-        userRepository.findById(toolBox.getManagerId()).ifPresent(user ->
-                response.setManagerName(user.getUsername())
-        );
+        Set<Long> managerIds = toolBoxes.stream().map(ToolBox::getManagerId).collect(Collectors.toSet());
+        Map<Long, String> managerNameMap = new HashMap<>();
+        if (!managerIds.isEmpty()) {
+            userRepository.findAllById(managerIds).forEach(u -> managerNameMap.put(u.getId(), u.getUsername()));
+        }
 
-        return response;
+        List<ToolBoxResponse> responses = new ArrayList<>();
+        for (ToolBox toolBox : toolBoxes) {
+            responses.add(mapToToolBoxResponse(toolBox, managerNameMap));
+        }
+        return responses;
     }
 
     private ToolBoxResponse toResponse(ToolBox toolBox) {
+        return toResponseList(List.of(toolBox)).get(0);
+    }
+
+    private ToolBoxResponse mapToToolBoxResponse(ToolBox toolBox, Map<Long, String> managerNameMap) {
         ToolBoxResponse response = new ToolBoxResponse();
         response.setId(toolBox.getId());
         response.setName(toolBox.getName());
@@ -146,11 +154,7 @@ public class ToolBoxService {
         response.setImage(toolBox.getImage());
         response.setIsActive(toolBox.getIsActive());
         response.setCreatedAt(toolBox.getCreatedAt());
-
-        userRepository.findById(toolBox.getManagerId()).ifPresent(user ->
-                response.setManagerName(user.getUsername())
-        );
-
+        response.setManagerName(managerNameMap.get(toolBox.getManagerId()));
         return response;
     }
 

@@ -341,10 +341,12 @@ public class BorrowRequestService {
         Set<Long> requesterIds = borrowRequests.stream().map(BorrowRequest::getRequesterId).collect(Collectors.toSet());
 
         Map<Long, Boolean> hasReviewedMap = toolReviewService.getHasReviewedMapByBorrowRequestIds(new ArrayList<>(borrowRequestIds));
+
         Map<Long, String> toolNameMap = new HashMap<>();
         if (!toolIds.isEmpty()) {
             toolRepository.findAllById(toolIds).forEach(t -> toolNameMap.put(t.getId(), t.getName()));
         }
+
         Map<Long, String> requesterNameMap = new HashMap<>();
         if (!requesterIds.isEmpty()) {
             userRepository.findAllById(requesterIds).forEach(u -> requesterNameMap.put(u.getId(), u.getUsername()));
@@ -353,29 +355,20 @@ public class BorrowRequestService {
         List<BorrowRequestResponse> responses = new ArrayList<>();
         LocalDate today = LocalDate.now();
         for (BorrowRequest borrowRequest : borrowRequests) {
-            BorrowRequestResponse response = new BorrowRequestResponse();
-            response.setId(borrowRequest.getId());
-            response.setToolId(borrowRequest.getToolId());
-            response.setRequesterId(borrowRequest.getRequesterId());
-            response.setStartDate(borrowRequest.getStartDate());
-            response.setExpectedReturnDate(borrowRequest.getExpectedReturnDate());
-            response.setActualReturnDate(borrowRequest.getActualReturnDate());
-            response.setStatus(borrowRequest.getStatus());
-            response.setRemark(borrowRequest.getRemark());
-            response.setCreatedAt(borrowRequest.getCreatedAt());
-
-            response.setToolName(toolNameMap.get(borrowRequest.getToolId()));
-            response.setRequesterName(requesterNameMap.get(borrowRequest.getRequesterId()));
-            response.setHasReviewed(hasReviewedMap.getOrDefault(borrowRequest.getId(), false));
-
-            populateOverdueFields(response, borrowRequest, today);
-
-            responses.add(response);
+            responses.add(mapToBorrowRequestResponse(borrowRequest, toolNameMap, requesterNameMap, hasReviewedMap, today));
         }
         return responses;
     }
 
     private BorrowRequestResponse toResponse(BorrowRequest borrowRequest) {
+        return toResponseList(List.of(borrowRequest)).get(0);
+    }
+
+    private BorrowRequestResponse mapToBorrowRequestResponse(BorrowRequest borrowRequest,
+                                                             Map<Long, String> toolNameMap,
+                                                             Map<Long, String> requesterNameMap,
+                                                             Map<Long, Boolean> hasReviewedMap,
+                                                             LocalDate today) {
         BorrowRequestResponse response = new BorrowRequestResponse();
         response.setId(borrowRequest.getId());
         response.setToolId(borrowRequest.getToolId());
@@ -387,17 +380,11 @@ public class BorrowRequestService {
         response.setRemark(borrowRequest.getRemark());
         response.setCreatedAt(borrowRequest.getCreatedAt());
 
-        toolRepository.findById(borrowRequest.getToolId()).ifPresent(tool ->
-                response.setToolName(tool.getName())
-        );
+        response.setToolName(toolNameMap.get(borrowRequest.getToolId()));
+        response.setRequesterName(requesterNameMap.get(borrowRequest.getRequesterId()));
+        response.setHasReviewed(hasReviewedMap.getOrDefault(borrowRequest.getId(), false));
 
-        userRepository.findById(borrowRequest.getRequesterId()).ifPresent(user ->
-                response.setRequesterName(user.getUsername())
-        );
-
-        response.setHasReviewed(toolReviewService.hasReviewed(borrowRequest.getId()));
-
-        populateOverdueFields(response, borrowRequest, LocalDate.now());
+        populateOverdueFields(response, borrowRequest, today);
 
         return response;
     }
