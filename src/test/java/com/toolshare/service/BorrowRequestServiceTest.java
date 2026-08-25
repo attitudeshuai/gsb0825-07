@@ -19,6 +19,8 @@ import com.toolshare.repository.OverdueRecordRepository;
 import com.toolshare.repository.ToolBoxRepository;
 import com.toolshare.repository.ToolRepository;
 import com.toolshare.repository.UserRepository;
+import com.toolshare.service.mapper.BorrowRequestResponseMapper;
+import com.toolshare.service.mapper.ToolBoxResponseMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -64,10 +66,13 @@ class BorrowRequestServiceTest {
     private NotificationService notificationService;
 
     @Mock
-    private ToolReviewService toolReviewService;
+    private OverdueRecordRepository overdueRecordRepository;
 
     @Mock
-    private OverdueRecordRepository overdueRecordRepository;
+    private BorrowRequestResponseMapper borrowRequestResponseMapper;
+
+    @Mock
+    private ToolBoxResponseMapper toolBoxResponseMapper;
 
     @InjectMocks
     private BorrowRequestService borrowRequestService;
@@ -131,7 +136,6 @@ class BorrowRequestServiceTest {
         when(toolBoxRepository.findById(1L)).thenReturn(Optional.of(activeToolBox));
         when(toolRepository.save(any(Tool.class))).thenAnswer(inv -> inv.getArgument(0));
         when(borrowRequestRepository.save(any(BorrowRequest.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(toolReviewService.hasReviewed(any())).thenReturn(false);
 
         borrowRequestService.updateBorrowStatus(1000L, request, ownerId);
 
@@ -164,7 +168,6 @@ class BorrowRequestServiceTest {
         when(toolBoxRepository.findById(1L)).thenReturn(Optional.of(inactiveToolBox));
         when(toolRepository.save(any(Tool.class))).thenAnswer(inv -> inv.getArgument(0));
         when(borrowRequestRepository.save(any(BorrowRequest.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(toolReviewService.hasReviewed(any())).thenReturn(false);
 
         borrowRequestService.updateBorrowStatus(1000L, request, ownerId);
 
@@ -190,14 +193,13 @@ class BorrowRequestServiceTest {
         when(toolBoxRepository.findById(1L)).thenReturn(Optional.of(inactiveToolBox));
         when(toolRepository.save(any(Tool.class))).thenAnswer(inv -> inv.getArgument(0));
         when(borrowRequestRepository.save(any(BorrowRequest.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(toolReviewService.hasReviewed(any())).thenReturn(false);
 
         borrowRequestService.updateBorrowStatus(1000L, returnRequest, ownerId);
 
         assertEquals(ToolStatus.MAINTENANCE, tool.getStatus());
         assertEquals(ToolStatus.AVAILABLE, tool.getStatusBeforeBoxDeactivated());
 
-        reset(toolBoxRepository, toolRepository, toolReviewService, userRepository);
+        reset(toolBoxRepository, toolRepository, userRepository);
         ToolBox toolBoxForTest = new ToolBox();
         toolBoxForTest.setId(1L);
         toolBoxForTest.setIsActive(false);
@@ -208,7 +210,7 @@ class BorrowRequestServiceTest {
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(new User()));
 
         ToolBoxService testBoxService = new ToolBoxService(
-                toolBoxRepository, toolRepository, userRepository
+                toolBoxRepository, toolRepository, toolBoxResponseMapper
         );
         testBoxService.adminUpdateToolBoxActive(1L, true);
 
@@ -268,7 +270,6 @@ class BorrowRequestServiceTest {
         when(toolRepository.save(any(Tool.class))).thenAnswer(inv -> inv.getArgument(0));
         when(borrowRequestRepository.save(any(BorrowRequest.class))).thenAnswer(inv -> inv.getArgument(0));
         when(overdueRecordRepository.findByBorrowRequestId(1000L)).thenReturn(Optional.of(overdueRecord));
-        when(toolReviewService.hasReviewed(any())).thenReturn(false);
 
         borrowRequestService.updateBorrowStatus(1000L, request, ownerId);
 
@@ -305,7 +306,6 @@ class BorrowRequestServiceTest {
         when(toolBoxRepository.findById(1L)).thenReturn(Optional.of(inactiveToolBox));
         when(toolRepository.save(any(Tool.class))).thenAnswer(inv -> inv.getArgument(0));
         when(borrowRequestRepository.save(any(BorrowRequest.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(toolReviewService.hasReviewed(any())).thenReturn(false);
 
         borrowRequestService.updateBorrowStatus(1000L, returnRequest, ownerId);
 
@@ -327,7 +327,7 @@ class BorrowRequestServiceTest {
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(new User()));
 
         ToolBoxService testBoxService = new ToolBoxService(
-                toolBoxRepository, toolRepository, userRepository
+                toolBoxRepository, toolRepository, toolBoxResponseMapper
         );
         testBoxService.adminUpdateToolBoxActive(1L, true);
 
@@ -462,6 +462,7 @@ class BorrowRequestServiceTest {
                 eq(10L), anyList(), eq(startDate), eq(endDate), isNull()))
                 .thenReturn(new ArrayList<>());
         when(borrowRequestRepository.save(any(BorrowRequest.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(borrowRequestResponseMapper.toResponse(any())).thenReturn(new BorrowRequestResponse());
 
         BorrowRequestResponse response = borrowRequestService.createBorrowRequest(request, requesterId);
 
@@ -531,7 +532,6 @@ class BorrowRequestServiceTest {
         when(borrowRequestRepository.findById(1000L)).thenReturn(Optional.of(existingRequest));
         when(toolRepository.findById(10L)).thenReturn(Optional.of(tool));
         when(borrowRequestRepository.save(any(BorrowRequest.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(toolReviewService.hasReviewed(any())).thenReturn(false);
 
         borrowRequestService.updateBorrowRequest(1000L, updateRequest, requesterId);
 
@@ -565,7 +565,7 @@ class BorrowRequestServiceTest {
                 eq(10L), anyList(), eq(newStart), eq(newEnd), eq(1000L)))
                 .thenReturn(new ArrayList<>());
         when(borrowRequestRepository.save(any(BorrowRequest.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(toolReviewService.hasReviewed(any())).thenReturn(false);
+        when(borrowRequestResponseMapper.toResponse(any())).thenReturn(new BorrowRequestResponse());
 
         BorrowRequestResponse response = borrowRequestService.updateBorrowRequest(1000L, updateRequest, requesterId);
 
