@@ -4,6 +4,7 @@ import com.toolshare.entity.Tool;
 import com.toolshare.entity.ToolBox;
 import com.toolshare.entity.ToolStatus;
 import com.toolshare.exception.BadRequestException;
+import com.toolshare.mapper.ToolBoxResponseMapper;
 import com.toolshare.repository.ToolBoxRepository;
 import com.toolshare.repository.ToolRepository;
 import com.toolshare.repository.UserRepository;
@@ -34,6 +35,9 @@ class ToolBoxServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private ToolBoxResponseMapper toolBoxResponseMapper;
 
     @InjectMocks
     private ToolBoxService toolBoxService;
